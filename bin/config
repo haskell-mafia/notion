@@ -1,3 +1,4 @@
 : ${AWS_TEST_BUCKET:="ambiata-dev-view"}
+: ${FORCE_AWS:=true}
 
-export AWS_TEST_BUCKET
+export AWS_TEST_BUCKET FORCE_AWS

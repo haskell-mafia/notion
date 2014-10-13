@@ -60,8 +60,10 @@ object build extends Build {
       depend.mundane ++
       depend.poacher(version.value) ++
       depend.saws    ++
-      depend.specs2)
+      depend.specs2
+    )
   )
+  .dependsOn(core)
 
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(
@@ -99,5 +101,9 @@ object build extends Build {
   , logBuffered := false
   , cancelable := true
   , fork in test := true
+  , testOptions in Test ++= (if (Option(System.getenv("FORCE_AWS")).isDefined || Option(System.getenv("AWS_ACCESS_KEY")).isDefined)
+                               Seq()
+                             else
+                               Seq(Tests.Argument("--", "exclude", "aws")))
   )
 }
