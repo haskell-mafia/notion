@@ -13,15 +13,11 @@ object build extends Build {
   , base = file(".")
   , settings =
     standardSettings ++
-    promulgate.library(s"com.ambiata.notion", "ambiata-oss") ++
-    Seq[Settings](libraryDependencies ++=
-      depend.scalaz  ++
-      depend.mundane ++
-      depend.poacher(version.value) ++
-      depend.saws    ++
-      depend.specs2
-    )
+    promulgate.library("com.ambiata.notion", "ambiata-oss")
+  , aggregate =
+      Seq(core)
   )
+  .dependsOn(core)
 
   lazy val standardSettings =
     Defaults.defaultSettings ++
@@ -38,6 +34,33 @@ object build extends Build {
   , crossScalaVersions := Seq(scalaVersion.value)
   , fork in run := true
   , resolvers := depend.resolvers
+  )
+
+  lazy val core = Project(
+    id = "core"
+    , base = file("notion-core")
+    , settings = standardSettings ++ lib("core") ++ Seq[Settings](
+      name := "notion-core"
+    ) ++ Seq[Settings](libraryDependencies ++=
+      depend.scalaz  ++
+      depend.mundane ++
+      depend.poacher(version.value) ++
+      depend.saws    ++
+      depend.specs2
+    )
+  )
+
+  lazy val testing = Project(
+    id = "testing"
+    , base = file("notion-testing")
+    , settings = standardSettings ++ lib("testing") ++ Seq[Settings](
+      name := "notion-testing"
+    ) ++ Seq[Settings](libraryDependencies ++=
+      depend.scalaz  ++
+      depend.mundane ++
+      depend.poacher(version.value) ++
+      depend.saws    ++
+      depend.specs2)
   )
 
   lazy val compilationSettings: Seq[Settings] = Seq(
@@ -67,6 +90,9 @@ object build extends Build {
     , "-Yinline-warnings"
    )
   )
+
+  def lib(name: String) =
+    promulgate.library(s"com.ambiata.notion.$name", "ambiata-oss")
 
   lazy val testingSettings: Seq[Settings] = Seq(
     initialCommands in console := "import org.specs2._"

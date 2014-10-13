@@ -1,0 +1,3 @@
+: ${AWS_TEST_BUCKET:="ambiata-dev-view"}
+
+export AWS_TEST_BUCKET

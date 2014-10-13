@@ -8,7 +8,7 @@ object depend {
                       "org.specs2"           %% "specs2-junit",
                       "org.specs2"           %% "specs2-html",
                       "org.specs2"           %% "specs2-matcher-extra",
-                      "org.specs2"           %% "specs2-scalacheck").map(_ % "2.3.10" % "test")
+                      "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5-scalaz-7.0.6" % "test")
   val saws      = Seq("com.ambiata"          %% "saws"            % "1.2.1-20141013060029-6b42321" excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
