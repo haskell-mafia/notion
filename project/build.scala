@@ -17,7 +17,7 @@ object build extends Build {
     Seq[Settings](libraryDependencies ++=
       depend.scalaz  ++
       depend.mundane ++
-      depend.poacher ++
+      depend.poacher(version.value) ++
       depend.saws    ++
       depend.specs2
     )
@@ -32,7 +32,7 @@ object build extends Build {
 
   lazy val projectSettings: Seq[Settings] = Seq(
     name := "notion"
-  , version in ThisBuild := "0.0.1"
+  , version in ThisBuild := s"""0.0.1-${Option(System.getenv("HADOOP_VERSION")).getOrElse("cdh5")}"""
   , organization := "com.ambiata"
   , scalaVersion := "2.11.2"
   , fork in run := true

@@ -9,7 +9,7 @@ object depend {
                       "org.specs2"           %% "specs2-html",
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.3.10" % "test")
-  val saws      = Seq("com.ambiata"          %% "saws"            % "1.2.1-20141006225022-c52c1de" excludeAll(
+  val saws      = Seq("com.ambiata"          %% "saws"            % "1.2.1-20141009235053-972442d" excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
     ExclusionRule(organization = "com.owtelse.codec"),
@@ -17,13 +17,23 @@ object depend {
   ))
 
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-store").map(c =>
-                      "com.ambiata"          %% c                 % MUNDANE_VERSION) ++
-                  Seq("com.ambiata"          %% "mundane-testing" % MUNDANE_VERSION % "test")
+                      "com.ambiata"          %% c                 % "1.2.1-20141011082118-4f6471b") ++
+                  Seq("com.ambiata"          %% "mundane-testing" % "1.2.1-20141011082118-4f6471b" % "test")
 
   def poacher(version: String) =
-    if (version.contains("cdh4"))      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20141006224709-49cb270")
-    else if (version.contains("cdh5")) Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20141006223408-49cb270")
+    if (version.contains("cdh4"))      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20141010000015-2605acf") ++ hadoop(version)
+    else if (version.contains("cdh5")) Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20141009235022-2605acf") ++ hadoop(version)
     else                               sys.error(s"unsupported poacher version, can not build for $version")
+
+  def hadoop(version: String, hadoopVersion: String = "2.2.0") =
+    if (version.contains("cdh4"))      Seq("org.apache.hadoop" % "hadoop-client" % "2.0.0-mr1-cdh4.6.0" % "provided" exclude("asm", "asm"),
+                                           "org.apache.hadoop" % "hadoop-core"   % "2.0.0-mr1-cdh4.6.0" % "provided",
+                                           "org.apache.avro"   % "avro-mapred"   % "1.7.4"              % "provided" classifier "hadoop2")
+
+    else if (version.contains("cdh5")) Seq("org.apache.hadoop" % "hadoop-client" % "2.2.0-cdh5.0.0-beta-2" % "provided" exclude("asm", "asm"),
+                                           "org.apache.avro"   % "avro-mapred"   % "1.7.5-cdh5.0.0-beta-2" % "provided")
+
+    else sys.error(s"unsupported hadoop version, can not build for $version")
 
 
   val resolvers = Seq(
