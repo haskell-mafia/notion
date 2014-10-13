@@ -1,4 +1,4 @@
-package com.ambiata.notion
+package com.ambiata.notion.location
 
 import Location._
 import org.specs2.Specification

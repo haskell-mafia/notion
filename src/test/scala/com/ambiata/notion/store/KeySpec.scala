@@ -1,5 +1,6 @@
-package com.ambiata.notion
+package com.ambiata.notion.store
 
+import com.ambiata.notion.store.Key
 import org.specs2.Specification
 import org.specs2.matcher.Matcher
 

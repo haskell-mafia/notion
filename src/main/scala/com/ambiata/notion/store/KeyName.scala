@@ -1,6 +1,7 @@
-package com.ambiata.notion
+package com.ambiata.notion.store
 
 import java.util.UUID
+
 import com.ambiata.mundane.reflect.MacrosCompat
 
 case class KeyName private(name: String)

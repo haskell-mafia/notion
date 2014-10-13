@@ -1,8 +1,8 @@
-package com.ambiata
+package com.ambiata.notion
 
 import com.ambiata.mundane.reflect.MacrosCompat
 
-package object notion extends MacrosCompat {
+package object store extends MacrosCompat {
 
   /**
    * These various methods and macros

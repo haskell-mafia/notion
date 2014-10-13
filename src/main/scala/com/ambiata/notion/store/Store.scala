@@ -2,6 +2,8 @@ package com.ambiata.notion
 
 import com.ambiata.mundane.io._
 import java.io.{InputStream, OutputStream}
+import com.ambiata.notion.store.Key
+
 import scala.io.Codec
 import scalaz._, scalaz.stream._, scalaz.concurrent._
 import scodec.bits.ByteVector

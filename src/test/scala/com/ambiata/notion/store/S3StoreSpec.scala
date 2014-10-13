@@ -1,4 +1,4 @@
-package com.ambiata.notion
+package com.ambiata.notion.store
 
 import java.util.UUID
 
@@ -8,6 +8,7 @@ import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing._
 import com.ambiata.mundane.testing.Keys._
 import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.notion.store.Key
 import com.ambiata.saws.core.S3Action
 import com.ambiata.saws.s3._
 import org.specs2._

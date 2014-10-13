@@ -1,4 +1,5 @@
-package com.ambiata.notion
+package com.ambiata.notion.store
+
 /**
  * Key to access a value in a key-value Store
  */

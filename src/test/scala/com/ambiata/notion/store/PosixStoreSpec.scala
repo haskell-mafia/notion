@@ -1,4 +1,6 @@
-package com.ambiata.notion
+package com.ambiata.notion.store
+
+import com.ambiata.notion.store.Key
 
 import scala.io.Codec
 import scalaz.{Store => _, _}, Scalaz._, effect.IO

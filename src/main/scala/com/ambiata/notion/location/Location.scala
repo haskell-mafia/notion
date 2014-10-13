@@ -1,4 +1,4 @@
-package com.ambiata.notion
+package com.ambiata.notion.location
 
 import scalaz._, Scalaz._
 import com.ambiata.mundane.io._
