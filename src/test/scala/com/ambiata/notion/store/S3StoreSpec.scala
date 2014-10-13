@@ -59,12 +59,14 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
   """
 
   override implicit def defaultParameters: Parameters =
-    new Parameters(minTestsOk = 3, workers = 1, maxDiscardRatio = 100)
+    new Parameters(minTestsOk = 5, workers = 1, maxDiscardRatio = 100)
 
+  lazy val storeId = s"s3storespec/store.${UUID.randomUUID}"
+  lazy val altId = s"s3storespec/alternate.${UUID.randomUUID}"
   lazy val tmp1 = DirPath.unsafe(System.getProperty("java.io.tmpdir", "/tmp")) </> FileName.unsafe(s"StoreSpec.${UUID.randomUUID}")
   lazy val tmp2 = DirPath.unsafe(System.getProperty("java.io.tmpdir", "/tmp")) </> FileName.unsafe(s"StoreSpec.${UUID.randomUUID}")
-  lazy val store     = S3Store("ambiata-test-view-exp", DirPath.unsafe("s3storespec/store"), client, tmp1)
-  lazy val alternate = S3Store("ambiata-test-view-exp", DirPath.unsafe("s3storespec/alternate"), client, tmp2)
+  lazy val store     = S3Store("ambiata-test-view-exp", DirPath.unsafe(storeId), client, tmp1)
+  lazy val alternate = S3Store("ambiata-test-view-exp", DirPath.unsafe(altId), client, tmp2)
   lazy val client = new AmazonS3Client
 
   def list =
@@ -185,7 +187,7 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
 
   def create(keys: Keys): ResultT[IO, Unit] =
     keys.keys.traverseU(e =>
-      S3.writeLines("ambiata-test-view-exp", (e prepend "s3storespec/store").path+"/"+e.value, Seq(e.value.toString))).evalT.void
+      S3.writeLines("ambiata-test-view-exp", (e prepend storeId).path+"/"+e.value, Seq(e.value.toString))).evalT.void
 
   def clean[A](keys: Keys)(run: List[Key] => A): A = {
     try {
@@ -193,7 +195,8 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
       run(keys.keys.map(e => e.full.toKey))
     }
     finally {
-      (S3.deleteAll("ambiata-test-view-exp", "s3storespec") >>
+      (S3.deleteAll("ambiata-test-view-exp", storeId) >>
+        S3.deleteAll("ambiata-test-view-exp", altId) >>
         S3Action.fromResultT(Directories.delete(tmp1)) >>
         S3Action.fromResultT(Directories.delete(tmp2))).execute(client).void.unsafePerformIO
     }
