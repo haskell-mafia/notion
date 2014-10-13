@@ -13,7 +13,8 @@ object depend {
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
     ExclusionRule(organization = "com.owtelse.codec"),
-    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.10")
+    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.10"),
+    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.11")
   ))
 
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-store").map(c =>
