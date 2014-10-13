@@ -15,7 +15,7 @@ object build extends Build {
     standardSettings ++
     promulgate.library("com.ambiata.notion", "ambiata-oss")
   , aggregate =
-      Seq(core)
+      Seq(core, testing)
   )
   .dependsOn(core)
 
