@@ -5,7 +5,6 @@ import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.data._
 import com.ambiata.mundane.io._
-import com.ambiata.notion._
 import com.ambiata.poacher.hdfs._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}

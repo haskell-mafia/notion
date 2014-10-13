@@ -1,10 +1,9 @@
-package com.ambiata.notion
+package com.ambiata.notion.store
 
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.data._
 import java.io.{InputStream, OutputStream}
-import com.ambiata.notion.store.{KeyName, Key}
 
 import scala.io.Codec
 import scalaz._, Scalaz._, scalaz.stream._, scalaz.concurrent._, effect.IO, effect.Effect._
