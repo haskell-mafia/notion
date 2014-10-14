@@ -15,7 +15,7 @@ object build extends Build {
     standardSettings ++
     promulgate.library("com.ambiata.notion", "ambiata-oss")
   , aggregate =
-      Seq(core)
+      Seq(core, distcopy)
   )
   .dependsOn(core)
 
@@ -49,6 +49,23 @@ object build extends Build {
       depend.specs2
     )
   )
+
+  lazy val distcopy = Project(
+    id = "distcopy"
+    , base = file("notion-distcopy")
+    , settings = standardSettings ++ lib("distcopy") ++ Seq[Settings](
+      name := "notion-distcopy"
+    ) ++ Seq[Settings](libraryDependencies ++=
+      depend.scalaz ++
+      depend.saws ++
+      depend.mundane ++
+      depend.scalaz ++
+      depend.specs2 ++
+      depend.argonaut ++
+      depend.poacher(version.value) ++
+      depend.hadoop(version.value))
+  )
+  .dependsOn(core)
 
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(
@@ -88,6 +105,7 @@ object build extends Build {
   , logBuffered := false
   , cancelable := true
   , fork in test := true
+  , testOptions in Test += Tests.Setup(() => System.setProperty("log4j.configuration", "file:etc/log4j-test.properties"))
   , testOptions in Test ++= (if (Option(System.getenv("FORCE_AWS")).isDefined || Option(System.getenv("AWS_ACCESS_KEY")).isDefined)
                                Seq()
                              else

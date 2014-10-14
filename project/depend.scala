@@ -15,7 +15,7 @@ object depend {
     ExclusionRule(organization = "com.owtelse.codec"),
     ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.10"),
     ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.11")
-  ))
+  ),                  "com.ambiata"          %% "saws-testing"    % "1.2.1-20141020033730-b75d13a" % "test")
 
   val mundaneVersion = "1.2.1-20141024050817-e2b01b2"
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
@@ -37,6 +37,7 @@ object depend {
 
     else sys.error(s"unsupported hadoop version, can not build for $version")
 
+  val argonaut    = Seq("io.argonaut"        %% "argonaut"     % "6.1-M4")
 
   val resolvers = Seq(
     Resolver.sonatypeRepo("releases")
