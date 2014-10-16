@@ -6,7 +6,6 @@ import com.ambiata.mundane.io._
 import com.ambiata.notion.core._
 import com.ambiata.notion.testing.{TemporaryType => T}
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.s3.{S3Store => _}
 import org.apache.hadoop.conf.Configuration
 
 import scalaz.{Store =>_,_}, Scalaz._, effect._

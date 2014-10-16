@@ -15,11 +15,11 @@ import scodec.bits.ByteVector
 
 case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client) extends ReadOnlyStore[ResultTIO] {
   def list(prefix: Key): ResultT[IO, List[Key]] =
-    S3.listKeys(S3Address(bucket, (base </> keyToDirPath(prefix)).path)).executeT(client)
+    S3.listKeysx(addressx(prefix)).executeT(client)
       .map(_.map(path => filePathToKey(FilePath.unsafe(path).relativeTo(base </> keyToDirPath(prefix)))))
 
   def listHeads(prefix: Key): ResultT[IO, List[Key]] =
-    S3.listKeysHead(S3Address(bucket, (base </> keyToDirPath(prefix)).path)).executeT(client)
+    S3.listKeysHeadx(addressx(prefix)).executeT(client)
       .map(_.map(Key.unsafe))
 
   def filter(prefix: Key, predicate: Key => Boolean): ResultT[IO, List[Key]] =
@@ -29,13 +29,13 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
     list(prefix).map(_.find(predicate))
 
   def exists(key: Key): ResultT[IO, Boolean] =
-    S3.exists(S3Address(bucket, (base </> keyToDirPath(key)).path)).executeT(client)
+    S3.exists(address(key)).executeT(client)
 
   def existsPrefix(prefix: Key): ResultT[IO, Boolean] =
-    S3.existsPrefix(S3Address(bucket, (base </> keyToDirPath(prefix)).path)).executeT(client)
+    S3.existsPrefixx(addressx(prefix)).executeT(client)
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): ResultT[IO, Checksum] =
-    S3.withStream(S3Address(bucket, (base </> keyToDirPath(key)).path), in => Checksum.stream(in, algorithm)).executeT(client)
+    S3.withStream(address(key), in => Checksum.stream(in, algorithm)).executeT(client)
 
   def copyTo(store: Store[ResultTIO], src: Key, dest: Key): ResultT[IO, Unit] =
     unsafe.withInputStream(src) { in =>
@@ -49,7 +49,7 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
 
   val bytes: StoreBytesRead[ResultTIO] = new StoreBytesRead[ResultTIO] {
     def read(key: Key): ResultT[IO, ByteVector] =
-      s3 { S3.getBytes(S3Address(bucket, (base </> keyToDirPath(key)).path)).map(ByteVector.apply) }
+      s3 { S3.getBytes(address(key)).map(ByteVector.apply) }
 
     def source(key: Key): Process[Task, ByteVector] =
       scalaz.stream.io.chunkR(client.getObject(bucket, (base </> keyToDirPath(key)).path).getObjectContent).evalMap(_(1024 * 1024))
@@ -57,7 +57,7 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
 
   val strings: StoreStringsRead[ResultTIO] = new StoreStringsRead[ResultTIO] {
     def read(key: Key, codec: Codec): ResultT[IO, String] =
-      s3 { S3.getString(S3Address(bucket, (base </> keyToDirPath(key)).path), codec.name) }
+      s3 { S3.getString(address(key), codec.name) }
   }
 
   val utf8: StoreUtf8Read[ResultTIO] = new StoreUtf8Read[ResultTIO] {
@@ -86,18 +86,21 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
 
   val unsafe: StoreUnsafeRead[ResultTIO] = new StoreUnsafeRead[ResultTIO] {
     def withInputStream(key: Key)(f: InputStream => ResultT[IO, Unit]): ResultT[IO, Unit] =
-      ResultT.using(S3.getObject(S3Address(bucket, (base </> keyToDirPath(key)).path)).executeT(client).map(_.getObjectContent: InputStream))(f)
+      ResultT.using(S3.getObject(address(key)).executeT(client).map(_.getObjectContent: InputStream))(f)
   }
 
   def s3[A](thunk: => S3Action[A]): ResultT[IO, A] =
     thunk.executeT(client)
 
-  private def keyToFilePath(key: Key): FilePath =
-    FilePath.unsafe(key.name)
+  def address(prefix: Key): S3Address =
+    S3Address(bucket, (base </> keyToDirPath(prefix)).path)
+
+  /** Only to be used by deprecated Saws methods - removed when they are no longer used */
+  private def addressx(prefix: Key): S3Address =
+    S3Address(bucket, (base </> keyToDirPath(prefix)).path + "/")
 
   private def keyToDirPath(key: Key): DirPath =
     DirPath.unsafe(key.name)
-
 
   private def filePathToKey(filePath: FilePath): Key =
     new Key(filePath.names.map(n => KeyName.unsafe(n.name)).toVector)

@@ -11,7 +11,7 @@ import scalaz._, Scalaz._, effect._
 
 case class TemporaryS3(s3: S3Address) {
   def clean: ResultT[IO, Unit] =
-    S3.deleteAll(s3).executeT(Clients.s3)
+    S3.deleteAllx(s3).executeT(Clients.s3)
 }
 
 object TemporaryS3 {

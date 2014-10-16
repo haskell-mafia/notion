@@ -2,14 +2,14 @@ import sbt._
 import Keys._
 
 object depend {
-  val scalaz    = Seq("org.scalaz"           %% "scalaz-core"     % "7.0.6",
-                      "org.scalaz"           %% "scalaz-effect"   % "7.0.6")
+  val scalaz    = Seq("org.scalaz"           %% "scalaz-core"     % "7.1.0",
+                      "org.scalaz"           %% "scalaz-effect"   % "7.1.0")
   val specs2    = Seq("org.specs2"           %% "specs2-core",
                       "org.specs2"           %% "specs2-junit",
                       "org.specs2"           %% "specs2-html",
                       "org.specs2"           %% "specs2-matcher-extra",
-                      "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5-scalaz-7.0.6" % "test")
-  val saws      = Seq("com.ambiata"          %% "saws"            % "1.2.1-20141013060029-6b42321" excludeAll(
+                      "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
+  val saws      = Seq("com.ambiata"          %% "saws"            % "1.2.1-20141016223607-d545acf" excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
     ExclusionRule(organization = "com.owtelse.codec"),
@@ -17,13 +17,14 @@ object depend {
     ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.11")
   ))
 
-  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-store").map(c =>
-                      "com.ambiata"          %% c                 % "1.2.1-20141011082118-4f6471b") ++
-                  Seq("com.ambiata"          %% "mundane-testing" % "1.2.1-20141011082118-4f6471b" % "test")
+  val mundaneVersion = "1.2.1-20141016221505-82db433"
+  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
+                      "com.ambiata"          %% c                 % mundaneVersion) ++
+                  Seq("com.ambiata"          %% "mundane-testing" % mundaneVersion % "test")
 
   def poacher(version: String) =
-    if (version.contains("cdh4"))      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20141010000015-2605acf") ++ hadoop(version)
-    else if (version.contains("cdh5")) Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20141009235022-2605acf") ++ hadoop(version)
+    if (version.contains("cdh4"))      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20141016223731-40c7702") ++ hadoop(version)
+    else if (version.contains("cdh5")) Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20141016223518-40c7702") ++ hadoop(version)
     else                               sys.error(s"unsupported poacher version, can not build for $version")
 
   def hadoop(version: String, hadoopVersion: String = "2.2.0") =
