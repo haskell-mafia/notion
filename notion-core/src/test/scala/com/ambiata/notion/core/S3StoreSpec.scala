@@ -186,7 +186,7 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
 
   def create(keys: Keys): ResultT[IO, Unit] =
     keys.keys.traverseU(e =>
-      S3.writeLines(S3Address("ambiata-test-view-exp", (e prepend storeId).path+"/"+e.value), Seq(e.value.toString))).evalT.void
+      S3.putString(S3Address("ambiata-test-view-exp", (e prepend storeId).path+"/"+e.value), e.value.toString)).evalT.void
 
   def clean[A](keys: Keys)(run: List[Key] => A): A = {
     try {
@@ -194,8 +194,8 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
       run(keys.keys.map(e => e.full.toKey))
     }
     finally {
-      (S3.deleteAll(S3Address("ambiata-test-view-exp", storeId)) >>
-        S3.deleteAll(S3Address("ambiata-test-view-exp", altId)) >>
+      (S3.deleteAllx(S3Address("ambiata-test-view-exp", storeId)) >>
+        S3.deleteAllx(S3Address("ambiata-test-view-exp", altId)) >>
         S3Action.fromResultT(Directories.delete(tmp1)) >>
         S3Action.fromResultT(Directories.delete(tmp2))).execute(client).void.unsafePerformIO
     }
