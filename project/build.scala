@@ -20,7 +20,7 @@ object build extends Build {
   .dependsOn(core)
 
   lazy val standardSettings =
-    Defaults.defaultSettings ++
+    Defaults.coreDefaultSettings ++
     projectSettings          ++
     compilationSettings      ++
     testingSettings

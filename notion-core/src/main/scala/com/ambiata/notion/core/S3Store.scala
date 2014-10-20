@@ -13,14 +13,14 @@ import scala.io.Codec
 import scalaz.{Store => _, _}, Scalaz._, scalaz.stream._, scalaz.concurrent._, effect.IO, effect.Effect._
 import scodec.bits.ByteVector
 
-case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client) extends ReadOnlyStore[ResultTIO] {
+case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnlyStore[ResultTIO] {
   def list(prefix: Key): ResultT[IO, List[Key]] =
-    S3.listKeysx(addressx(prefix)).executeT(client)
-      .map(_.map(path => filePathToKey(FilePath.unsafe(path).relativeTo(base </> keyToDirPath(prefix)))))
+    s3 { (s3 / prefix.name).listPrefix.map(_.map( p => {
+      new Key(p.removeCommonPrefix(s3).cata(_.split(S3Operations.DELIMITER).toList, Nil).map(KeyName.unsafe).toVector)
+    }))}
 
   def listHeads(prefix: Key): ResultT[IO, List[Key]] =
-    S3.listKeysHeadx(addressx(prefix)).executeT(client)
-      .map(_.map(Key.unsafe))
+    s3 { (s3 / prefix.name).listKeysHead.map(_.map(Key.unsafe)) }
 
   def filter(prefix: Key, predicate: Key => Boolean): ResultT[IO, List[Key]] =
     list(prefix).map(_.filter(predicate))
@@ -29,13 +29,13 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
     list(prefix).map(_.find(predicate))
 
   def exists(key: Key): ResultT[IO, Boolean] =
-    S3.exists(address(key)).executeT(client)
+    s3 { (s3 | key.name).exists }
 
   def existsPrefix(prefix: Key): ResultT[IO, Boolean] =
-    S3.existsPrefixx(addressx(prefix)).executeT(client)
+    s3 { (s3 / prefix.name).exists }
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): ResultT[IO, Checksum] =
-    S3.withStream(address(key), in => Checksum.stream(in, algorithm)).executeT(client)
+    s3 { (s3 | key.name).withStream(in => Checksum.stream(in, algorithm)) }
 
   def copyTo(store: Store[ResultTIO], src: Key, dest: Key): ResultT[IO, Unit] =
     unsafe.withInputStream(src) { in =>
@@ -49,15 +49,15 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
 
   val bytes: StoreBytesRead[ResultTIO] = new StoreBytesRead[ResultTIO] {
     def read(key: Key): ResultT[IO, ByteVector] =
-      s3 { S3.getBytes(address(key)).map(ByteVector.apply) }
+      s3 { (s3 | key.name).getBytes.map(ByteVector.apply) }
 
     def source(key: Key): Process[Task, ByteVector] =
-      scalaz.stream.io.chunkR(client.getObject(bucket, (base </> keyToDirPath(key)).path).getObjectContent).evalMap(_(1024 * 1024))
+      scalaz.stream.io.chunkR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent).evalMap(_(1024 * 1024))
   }
 
   val strings: StoreStringsRead[ResultTIO] = new StoreStringsRead[ResultTIO] {
     def read(key: Key, codec: Codec): ResultT[IO, String] =
-      s3 { S3.getString(address(key), codec.name) }
+      s3 { (s3 | key.name).getWithEncoding(codec) }
   }
 
   val utf8: StoreUtf8Read[ResultTIO] = new StoreUtf8Read[ResultTIO] {
@@ -73,7 +73,7 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
       strings.read(key, codec).map(_.lines.toList)
 
     def source(key: Key, codec: Codec): Process[Task, String] =
-      scalaz.stream.io.linesR(client.getObject(bucket, (base </> keyToDirPath(key)).path).getObjectContent)(codec)
+      scalaz.stream.io.linesR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent)(codec)
   }
 
   val linesUtf8: StoreLinesUtf8Read[ResultTIO] = new StoreLinesUtf8Read[ResultTIO] {
@@ -86,36 +86,23 @@ case class S3ReadOnlyStore(bucket: String, base: DirPath, client: AmazonS3Client
 
   val unsafe: StoreUnsafeRead[ResultTIO] = new StoreUnsafeRead[ResultTIO] {
     def withInputStream(key: Key)(f: InputStream => ResultT[IO, Unit]): ResultT[IO, Unit] =
-      ResultT.using(S3.getObject(address(key)).executeT(client).map(_.getObjectContent: InputStream))(f)
+      ResultT.using(s3 { (s3 | key.name).getObject.map(_.getObjectContent: InputStream) })(f)
   }
 
   def s3[A](thunk: => S3Action[A]): ResultT[IO, A] =
     thunk.executeT(client)
 
-  def address(prefix: Key): S3Address =
-    S3Address(bucket, (base </> keyToDirPath(prefix)).path)
-
-  /** Only to be used by deprecated Saws methods - removed when they are no longer used */
-  private def addressx(prefix: Key): S3Address =
-    S3Address(bucket, (base </> keyToDirPath(prefix)).path + "/")
-
-  private def keyToDirPath(key: Key): DirPath =
-    DirPath.unsafe(key.name)
-
-  private def filePathToKey(filePath: FilePath): Key =
-    new Key(filePath.names.map(n => KeyName.unsafe(n.name)).toVector)
-
 }
 
-case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache: DirPath) extends Store[ResultTIO] with ReadOnlyStore[ResultTIO] {
-  val root: DirPath =
-    DirPath.unsafe(bucket) </> base
+case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends Store[ResultTIO] with ReadOnlyStore[ResultTIO] {
+  val root: S3Prefix =
+    s3
 
   def local =
     PosixStore(cache)
 
   val readOnly: ReadOnlyStore[ResultTIO] =
-    S3ReadOnlyStore(bucket, base, client)
+    S3ReadOnlyStore(s3, client)
 
   def list(prefix: Key): ResultT[IO, List[Key]] =
     readOnly.list(prefix)
@@ -139,7 +126,7 @@ case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache:
     readOnly.checksum(key, algorithm)
 
   def delete(key: Key): ResultT[IO, Unit] =
-    S3.deleteObject(S3Address(bucket, (base </> keyToDirPath(key)).path)).executeT(client)
+    s3 { (s3 | key.name).delete }
 
   def deleteAll(prefix: Key): ResultT[IO, Unit] =
     list(prefix).flatMap(_.traverseU(delete)).void
@@ -151,7 +138,7 @@ case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache:
     copyTo(store, src, dest) >> delete(src)
 
   def copy(in: Key, out: Key): ResultT[IO, Unit] =
-    S3.copyFile(S3Address(bucket, (base </> keyToFilePath(in)).path), S3Address(bucket, (base </> keyToFilePath(out)).path)).executeT(client).void
+    s3 { (s3 | in.name).copy(s3 | out.name).void }
 
   def mirror(in: Key, out: Key): ResultT[IO, Unit] = for {
     paths <- list(in)
@@ -172,7 +159,7 @@ case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache:
       readOnly.bytes.source(key)
 
     def write(key: Key, data: ByteVector): ResultT[IO, Unit] =
-      s3 { S3.putBytes(S3Address(bucket, (base </> keyToDirPath(key)).path), data.toArray).void }
+      s3 { (s3 | key.name).putBytes(data.toArray).void }
 
     def sink(key: Key): Sink[Task, ByteVector] =
       io.resource(Task.delay(new PipedOutputStream))(out => Task.delay(out.close))(
@@ -185,7 +172,7 @@ case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache:
       readOnly.strings.read(key, codec)
 
     def write(key: Key, data: String, codec: Codec): ResultT[IO, Unit] =
-      s3 { S3.putString(S3Address(bucket, (base </> keyToDirPath(key)).path), data, codec.name).void }
+      s3 { (s3 | key.name).putWithEncoding(data, codec).void }
   }
 
   val utf8: StoreUtf8[ResultTIO] = new StoreUtf8[ResultTIO] {
@@ -237,11 +224,11 @@ case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache:
     def withOutputStream(key: Key)(f: OutputStream => ResultT[IO, Unit]): ResultT[IO, Unit] = {
       val unique = Key.unsafe(UUID.randomUUID.toString)
       local.unsafe.withOutputStream(unique)(f) >> local.unsafe.withInputStream(unique)(in =>
-        S3.putStream(S3Address(bucket, (base </> keyToDirPath(key)).path), in, {
+        s3 { (s3 | key.name).putStreamWithMetadata(in, {
           val metadata = S3.ServerSideEncryption
           metadata.setContentLength((local.root </> keyToFilePath(unique)).toFile.length)
           metadata
-        }).executeT(client).void)
+        }).void })
     }
   }
 
@@ -250,22 +237,13 @@ case class S3Store(bucket: String, base: DirPath, client: AmazonS3Client, cache:
 
   private def keyToFilePath(key: Key): FilePath =
     FilePath.unsafe(key.name)
-
-  private def keyToDirPath(key: Key): DirPath =
-    DirPath.unsafe(key.name)
 }
 
 object S3Store {
-  def createReadOnly(path: DirPath): S3Action[S3ReadOnlyStore] =
-    createReadOnly(path.rootname.path, path.fromRoot)
+  def createReadOnly(s3: S3Prefix): S3Action[ReadOnlyStore[ResultTIO]] =
+    S3Action.client.map(c => S3ReadOnlyStore(s3, c))
 
-  def createReadOnly(bucket: String, base: DirPath): S3Action[S3ReadOnlyStore] =
-    S3Action.client.map(c => S3ReadOnlyStore(bucket, base, c))
-
-  def create(path: DirPath, cache: DirPath): S3Action[S3Store] =
-    create(path.rootname.path, path.fromRoot, cache)
-
-  def create(bucket: String, base: DirPath, cache: DirPath): S3Action[S3Store] =
-    S3Action.client.map(c => S3Store(bucket, base, c, cache))
+  def create(s3: S3Prefix, cache: DirPath): S3Action[Store[ResultTIO]] =
+    S3Action.client.map(c => S3Store(s3, c, cache))
 
 }

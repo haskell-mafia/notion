@@ -64,8 +64,8 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
   lazy val altId = s"s3storespec/alternate.${UUID.randomUUID}"
   lazy val tmp1 = DirPath.unsafe(System.getProperty("java.io.tmpdir", "/tmp")) </> FileName.unsafe(s"StoreSpec.${UUID.randomUUID}")
   lazy val tmp2 = DirPath.unsafe(System.getProperty("java.io.tmpdir", "/tmp")) </> FileName.unsafe(s"StoreSpec.${UUID.randomUUID}")
-  lazy val store     = S3Store("ambiata-test-view-exp", DirPath.unsafe(storeId), client, tmp1)
-  lazy val alternate = S3Store("ambiata-test-view-exp", DirPath.unsafe(altId), client, tmp2)
+  lazy val store     = S3Store(S3Prefix("ambiata-test-view-exp", storeId), client, tmp1)
+  lazy val alternate = S3Store(S3Prefix("ambiata-test-view-exp", altId), client, tmp2)
   lazy val client = new AmazonS3Client
 
   def list =
@@ -74,7 +74,7 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
 
   def listFromPrefix =
     propNoShrink((keys: Keys) => clean(keys.map(_ prepend "sub")) { keys =>
-      store.list(Key.Root /"sub") must beOkLike((_:List[Key]).toSet must_== keys.map(_.fromRoot).toSet) })
+      store.list(Key.Root /"sub") must beOkLike((_:List[Key]).toSet must_== keys.toSet) })
 
   def listHeadPrefixes =
     propNoShrink((keys: Keys) => clean(keys.map(_ prepend "sub")) { keys =>
@@ -143,7 +143,7 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
   def mirror =
     propNoShrink((keys: Keys) => clean(keys) { keys =>
       store.mirror(Key.Root, Key("mirror")) >> store.list(Key("mirror")) must
-        beOkLike((_:List[Key]).toSet must_== keys.toSet) })
+        beOkLike((_: List[Key]).toSet must_== keys.map(_.prepend("mirror")).toSet) })
 
   def moveTo =
     propNoShrink((m: KeyEntry, n: KeyEntry) => clean(Keys(m :: Nil)) { _ =>
@@ -158,7 +158,7 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
   def mirrorTo =
     propNoShrink((keys: Keys) => clean(keys) { keys =>
       store.mirrorTo(alternate, Key.Root, Key("mirror")) >> alternate.list(Key("mirror")) must
-        beOkLike((_:List[Key]).toSet must_== keys.toSet) })
+        beOkLike((_: List[Key]).toSet must_== keys.map(_.prepend("mirror")).toSet) })
 
   def checksum =
     propNoShrink((m: KeyEntry) => clean(Keys(m :: Nil)) { _ =>
@@ -186,7 +186,7 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
 
   def create(keys: Keys): ResultT[IO, Unit] =
     keys.keys.traverseU(e =>
-      S3.putString(S3Address("ambiata-test-view-exp", (e prepend storeId).path+"/"+e.value), e.value.toString)).evalT.void
+      S3Address("ambiata-test-view-exp", (e prepend storeId).path+"/"+e.value).put(e.value.toString)).evalT.void
 
   def clean[A](keys: Keys)(run: List[Key] => A): A = {
     try {
@@ -194,8 +194,8 @@ class S3StoreSpec extends Specification with ScalaCheck { def is = isolated ^ s2
       run(keys.keys.map(e => e.full.toKey))
     }
     finally {
-      (S3.deleteAllx(S3Address("ambiata-test-view-exp", storeId)) >>
-        S3.deleteAllx(S3Address("ambiata-test-view-exp", altId)) >>
+      (S3Prefix("ambiata-test-view-exp", storeId).delete >>
+        S3Prefix("ambiata-test-view-exp", altId).delete >>
         S3Action.fromResultT(Directories.delete(tmp1)) >>
         S3Action.fromResultT(Directories.delete(tmp2))).execute(client).void.unsafePerformIO
     }

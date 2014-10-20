@@ -5,6 +5,7 @@ import com.ambiata.mundane.testing.ResultTIOMatcher._
 import com.ambiata.notion.core._
 import com.ambiata.notion.testing.TemporaryStore._
 import com.ambiata.saws.core.Clients
+import com.ambiata.saws.s3.S3Prefix
 import org.apache.hadoop.conf.Configuration
 import org.specs2.Specification
 import org.specs2.matcher.MatchResult
@@ -22,7 +23,7 @@ class TemporaryStoreSpec extends Specification { def is = s2"""
 
 """
   def s3Store =
-    withStore(S3Store(testBucket, s3TempDirPath, Clients.s3, createUniquePath))
+    withStore(S3Store(S3Prefix(testBucket, s3TempDirPath), Clients.s3, createUniquePath))
 
   def hdfsStore =
     withStore(HdfsStore(new Configuration, createUniquePath))
