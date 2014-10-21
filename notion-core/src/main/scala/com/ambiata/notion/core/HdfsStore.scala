@@ -28,7 +28,7 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO
     hdfs { Hdfs.filesystem.flatMap { fs =>
       Hdfs.globFilesRecursively(root </> keyToDirPath(prefix)).map { paths =>
         paths.map { path =>
-          filePathToKey(FilePath.unsafe(path.toString).relativeTo(root </> keyToDirPath(prefix)))
+          filePathToKey(FilePath.unsafe(path.toString).relativeTo(root))
         }
       }
     }}

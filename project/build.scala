@@ -15,12 +15,12 @@ object build extends Build {
     standardSettings ++
     promulgate.library("com.ambiata.notion", "ambiata-oss")
   , aggregate =
-      Seq(core, testing)
+      Seq(core)
   )
   .dependsOn(core)
 
   lazy val standardSettings =
-    Defaults.defaultSettings ++
+    Defaults.coreDefaultSettings ++
     projectSettings          ++
     compilationSettings      ++
     testingSettings
@@ -50,21 +50,6 @@ object build extends Build {
     )
   )
 
-  lazy val testing = Project(
-    id = "testing"
-    , base = file("notion-testing")
-    , settings = standardSettings ++ lib("testing") ++ Seq[Settings](
-      name := "notion-testing"
-    ) ++ Seq[Settings](libraryDependencies ++=
-      depend.scalaz  ++
-      depend.mundane ++
-      depend.poacher(version.value) ++
-      depend.saws    ++
-      depend.specs2
-    )
-  )
-  .dependsOn(core)
-
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(
       "-Xmx3G"
@@ -90,7 +75,9 @@ object build extends Build {
     , "-Xlint"
     , "-Xfatal-warnings"
     , "-Yinline-warnings"
-   )
+    )
+  , scalacOptions in (Compile,console) := Seq("-language:_", "-feature")
+  , scalacOptions in (Test,console) := Seq("-language:_", "-feature")
   )
 
   def lib(name: String) =
