@@ -1,9 +1,8 @@
-import sbt._
-import Keys._
-import sbt.KeyRanks._
+import sbt._, Keys._, KeyRanks._
 import sbtassembly.Plugin._
 import AssemblyKeys._
 import com.ambiata.promulgate.project.ProjectPlugin._
+import scoverage.ScoverageSbtPlugin._
 
 object build extends Build {
   type Settings = Def.Setting[_]
@@ -95,6 +94,7 @@ object build extends Build {
     )
   , scalacOptions in (Compile,console) := Seq("-language:_", "-feature")
   , scalacOptions in (Test,console) := Seq("-language:_", "-feature")
+  , scalacOptions in ScoverageCompile := Seq("-language:_", "-feature")
   )
 
   def lib(name: String) =
@@ -110,11 +110,10 @@ object build extends Build {
                                Seq()
                              else
                                Seq(Tests.Argument("--", "exclude", "aws")))
-  )
+  ) ++ instrumentSettings ++ Seq(ScoverageKeys.highlighting := true)
 
   lazy val prompt = shellPrompt in ThisBuild := { state =>
     val name = Project.extract(state).currentRef.project
     (if (name == "notion") "" else name) + "> "
   }
-
 }
