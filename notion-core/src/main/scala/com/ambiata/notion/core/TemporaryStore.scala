@@ -1,21 +1,23 @@
-package com.ambiata.notion.testing
+package com.ambiata.notion.core
 
 import java.util.UUID
+
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
-import com.ambiata.notion.core._
-import com.ambiata.notion.testing.{TemporaryType => T}
+import com.ambiata.notion.core.{TemporaryType => T}
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.S3Prefix
 import org.apache.hadoop.conf.Configuration
 
-import scalaz.{Store =>_,_}, Scalaz._, effect._
+import scalaz._, Scalaz._, effect._
+import scalaz.{Store => _}
 
 case class TemporaryStore(store: Store[ResultTIO]) {
   def clean: ResultT[IO, Unit] = for {
     _ <- store.deleteAll(Key.Root)
     _ <- store match {
-      case S3Store(_, _, s) => Directories.delete(s)
+      case S3Store(_, _, s) =>
+        Directories.delete(s)
       case _ => ResultT.unit[IO]
       }
   } yield ()

@@ -1,4 +1,4 @@
-package com.ambiata.notion.testing
+package com.ambiata.notion.core
 
 sealed trait TemporaryType
 

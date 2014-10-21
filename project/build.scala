@@ -15,7 +15,7 @@ object build extends Build {
     standardSettings ++
     promulgate.library("com.ambiata.notion", "ambiata-oss")
   , aggregate =
-      Seq(core, testing)
+      Seq(core)
   )
   .dependsOn(core)
 
@@ -49,21 +49,6 @@ object build extends Build {
       depend.specs2
     )
   )
-
-  lazy val testing = Project(
-    id = "testing"
-    , base = file("notion-testing")
-    , settings = standardSettings ++ lib("testing") ++ Seq[Settings](
-      name := "notion-testing"
-    ) ++ Seq[Settings](libraryDependencies ++=
-      depend.scalaz  ++
-      depend.mundane ++
-      depend.poacher(version.value) ++
-      depend.saws    ++
-      depend.specs2
-    )
-  )
-  .dependsOn(core)
 
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(

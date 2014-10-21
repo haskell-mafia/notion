@@ -15,12 +15,12 @@ import scodec.bits.ByteVector
 
 case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnlyStore[ResultTIO] {
   def list(prefix: Key): ResultT[IO, List[Key]] =
-    s3 { (s3 / prefix.name).listPrefix.map(_.map( p => {
+    run { (s3 / prefix.name).listPrefix.map(_.map( p => {
       new Key(p.removeCommonPrefix(s3).cata(_.split(S3Operations.DELIMITER).toList, Nil).map(KeyName.unsafe).toVector)
     }))}
 
   def listHeads(prefix: Key): ResultT[IO, List[Key]] =
-    s3 { (s3 / prefix.name).listKeysHead.map(_.map(Key.unsafe)) }
+    run { (s3 / prefix.name).listKeysHead.map(_.map(Key.unsafe)) }
 
   def filter(prefix: Key, predicate: Key => Boolean): ResultT[IO, List[Key]] =
     list(prefix).map(_.filter(predicate))
@@ -29,13 +29,13 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
     list(prefix).map(_.find(predicate))
 
   def exists(key: Key): ResultT[IO, Boolean] =
-    s3 { (s3 | key.name).exists }
+    run { (s3 | key.name).exists }
 
   def existsPrefix(prefix: Key): ResultT[IO, Boolean] =
-    s3 { (s3 / prefix.name).exists }
+    run { (s3 / prefix.name).exists }
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): ResultT[IO, Checksum] =
-    s3 { (s3 | key.name).withStream(in => Checksum.stream(in, algorithm)) }
+    run { (s3 | key.name).withStream(in => Checksum.stream(in, algorithm)) }
 
   def copyTo(store: Store[ResultTIO], src: Key, dest: Key): ResultT[IO, Unit] =
     unsafe.withInputStream(src) { in =>
@@ -49,7 +49,7 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
 
   val bytes: StoreBytesRead[ResultTIO] = new StoreBytesRead[ResultTIO] {
     def read(key: Key): ResultT[IO, ByteVector] =
-      s3 { (s3 | key.name).getBytes.map(ByteVector.apply) }
+      run { (s3 | key.name).getBytes.map(ByteVector.apply) }
 
     def source(key: Key): Process[Task, ByteVector] =
       scalaz.stream.io.chunkR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent).evalMap(_(1024 * 1024))
@@ -57,7 +57,7 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
 
   val strings: StoreStringsRead[ResultTIO] = new StoreStringsRead[ResultTIO] {
     def read(key: Key, codec: Codec): ResultT[IO, String] =
-      s3 { (s3 | key.name).getWithEncoding(codec) }
+      run { (s3 | key.name).getWithEncoding(codec) }
   }
 
   val utf8: StoreUtf8Read[ResultTIO] = new StoreUtf8Read[ResultTIO] {
@@ -86,10 +86,10 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
 
   val unsafe: StoreUnsafeRead[ResultTIO] = new StoreUnsafeRead[ResultTIO] {
     def withInputStream(key: Key)(f: InputStream => ResultT[IO, Unit]): ResultT[IO, Unit] =
-      ResultT.using(s3 { (s3 | key.name).getObject.map(_.getObjectContent: InputStream) })(f)
+      ResultT.using(run { (s3 | key.name).getObject.map(_.getObjectContent: InputStream) })(f)
   }
 
-  def s3[A](thunk: => S3Action[A]): ResultT[IO, A] =
+  def run[A](thunk: => S3Action[A]): ResultT[IO, A] =
     thunk.executeT(client)
 
 }
@@ -126,7 +126,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
     readOnly.checksum(key, algorithm)
 
   def delete(key: Key): ResultT[IO, Unit] =
-    s3 { (s3 | key.name).delete }
+    run { (s3 | key.name).delete }
 
   def deleteAll(prefix: Key): ResultT[IO, Unit] =
     list(prefix).flatMap(_.traverseU(delete)).void
@@ -138,7 +138,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
     copyTo(store, src, dest) >> delete(src)
 
   def copy(in: Key, out: Key): ResultT[IO, Unit] =
-    s3 { (s3 | in.name).copy(s3 | out.name).void }
+    run { (s3 | in.name).copy(s3 | out.name).void }
 
   def mirror(in: Key, out: Key): ResultT[IO, Unit] = for {
     paths <- list(in)
@@ -159,7 +159,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
       readOnly.bytes.source(key)
 
     def write(key: Key, data: ByteVector): ResultT[IO, Unit] =
-      s3 { (s3 | key.name).putBytes(data.toArray).void }
+      run { (s3 | key.name).putBytes(data.toArray).void }
 
     def sink(key: Key): Sink[Task, ByteVector] =
       io.resource(Task.delay(new PipedOutputStream))(out => Task.delay(out.close))(
@@ -172,7 +172,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
       readOnly.strings.read(key, codec)
 
     def write(key: Key, data: String, codec: Codec): ResultT[IO, Unit] =
-      s3 { (s3 | key.name).putWithEncoding(data, codec).void }
+      run { (s3 | key.name).putWithEncoding(data, codec).void }
   }
 
   val utf8: StoreUtf8[ResultTIO] = new StoreUtf8[ResultTIO] {
@@ -224,7 +224,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
     def withOutputStream(key: Key)(f: OutputStream => ResultT[IO, Unit]): ResultT[IO, Unit] = {
       val unique = Key.unsafe(UUID.randomUUID.toString)
       local.unsafe.withOutputStream(unique)(f) >> local.unsafe.withInputStream(unique)(in =>
-        s3 { (s3 | key.name).putStreamWithMetadata(in, {
+        run { (s3 | key.name).putStreamWithMetadata(in, {
           val metadata = S3.ServerSideEncryption
           metadata.setContentLength((local.root </> keyToFilePath(unique)).toFile.length)
           metadata
@@ -232,7 +232,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
     }
   }
 
-  def s3[A](thunk: => S3Action[A]): ResultT[IO, A] =
+  def run[A](thunk: => S3Action[A]): ResultT[IO, A] =
     thunk.executeT(client)
 
   private def keyToFilePath(key: Key): FilePath =
