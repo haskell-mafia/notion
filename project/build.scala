@@ -75,7 +75,9 @@ object build extends Build {
     , "-Xlint"
     , "-Xfatal-warnings"
     , "-Yinline-warnings"
-   )
+    )
+  , scalacOptions in (Compile,console) := Seq("-language:_", "-feature")
+  , scalacOptions in (Test,console) := Seq("-language:_", "-feature")
   )
 
   def lib(name: String) =
