@@ -9,13 +9,15 @@ object depend {
                       "org.specs2"           %% "specs2-html",
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
-  val saws      = Seq("com.ambiata"          %% "saws"            % "1.2.1-20141027030643-3092827" excludeAll(
+  
+  val sawsVersion = "1.2.1-20141027030643-3092827"
+  val saws      = Seq("com.ambiata"          %% "saws"            % sawsVersion excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
     ExclusionRule(organization = "com.owtelse.codec"),
     ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.10"),
     ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.11")
-  ),                  "com.ambiata"          %% "saws-testing"    % "1.2.1-20141020033730-b75d13a" % "test")
+  ),                  "com.ambiata"          %% "saws-testing"    % sawsVersion % "test")
 
   val mundaneVersion = "1.2.1-20141024050817-e2b01b2"
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
