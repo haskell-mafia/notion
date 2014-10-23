@@ -34,7 +34,7 @@ object build extends Build {
   , crossScalaVersions := Seq(scalaVersion.value)
   , fork in run := true
   , resolvers := depend.resolvers
-  )
+  ) ++ Seq(prompt)
 
   lazy val core = Project(
     id = "core"
@@ -111,4 +111,10 @@ object build extends Build {
                              else
                                Seq(Tests.Argument("--", "exclude", "aws")))
   )
+
+  lazy val prompt = shellPrompt in ThisBuild := { state =>
+    val name = Project.extract(state).currentRef.project
+    (if (name == "notion") "" else name) + "> "
+  }
+
 }
