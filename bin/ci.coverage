@@ -1,0 +1,5 @@
+#!/bin/sh
+
+source $(dirname $0)/config
+
+./sbt -ivy ~/.ivy-notion.coverage -Dsbt.log.noformat=true '; clean; set javaOptions := Seq("-Xmx6G", "-Xms512m", "-XX:MaxPermSize=512m"); scoverage:test'
