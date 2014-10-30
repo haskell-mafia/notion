@@ -9,7 +9,7 @@ object depend {
                       "org.specs2"           %% "specs2-html",
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
-  
+
   val sawsVersion = "1.2.1-20141029224557-0755851"
   val saws      = Seq("com.ambiata"          %% "saws"            % sawsVersion excludeAll(
     ExclusionRule(organization = "org.specs2"),
@@ -49,5 +49,6 @@ object depend {
   , "cloudera" at "https://repository.cloudera.com/content/repositories/releases"
   , Resolver.url("ambiata-oss", new URL("https://ambiata-oss.s3.amazonaws.com"))(Resolver.ivyStylePatterns)
   , "Scalaz Bintray Repo"  at "http://dl.bintray.com/scalaz/releases"
+  , "spray.io"             at "http://repo.spray.io"
   )
 }
