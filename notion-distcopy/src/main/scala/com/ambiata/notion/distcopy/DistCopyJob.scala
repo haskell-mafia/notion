@@ -1,6 +1,5 @@
 package com.ambiata.notion.distcopy
 
-import java.io.FileInputStream
 import java.util.UUID
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
@@ -10,7 +9,7 @@ import com.ambiata.mundane.error.Throwables
 import com.ambiata.mundane.io._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.poacher.mr._
-import com.ambiata.saws.core.{S3Action, Clients}
+import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.{S3, S3Address}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
