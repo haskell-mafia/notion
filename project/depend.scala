@@ -4,6 +4,9 @@ import Keys._
 object depend {
   val scalaz    = Seq("org.scalaz"           %% "scalaz-core"     % "7.1.0",
                       "org.scalaz"           %% "scalaz-effect"   % "7.1.0")
+
+  val scopt     = Seq("com.github.scopt"     %% "scopt"           % "3.2.0")
+
   val specs2    = Seq("org.specs2"           %% "specs2-core",
                       "org.specs2"           %% "specs2-junit",
                       "org.specs2"           %% "specs2-html",

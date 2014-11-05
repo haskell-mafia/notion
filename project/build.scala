@@ -14,7 +14,7 @@ object build extends Build {
     standardSettings ++
     promulgate.library("com.ambiata.notion", "ambiata-oss")
   , aggregate =
-      Seq(core, distcopy)
+      Seq(core, distcopy, cli)
   )
   .dependsOn(core, distcopy)
 
@@ -66,6 +66,19 @@ object build extends Build {
   )
   .dependsOn(core)
 
+  lazy val cli = Project(
+    id = "cli"
+  , base = file("notion-cli")
+  , settings = standardSettings ++ app("cli") ++ Seq[Settings](
+    name := "notion-cli"
+  ) ++ Seq[Settings](libraryDependencies ++=
+      depend.scopt ++
+      depend.saws ++
+      depend.mundane ++
+      depend.hadoop(version.value))
+  ).dependsOn(core, distcopy)
+
+
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(
       "-Xmx3G"
@@ -99,6 +112,10 @@ object build extends Build {
 
   def lib(name: String) =
     promulgate.library(s"com.ambiata.notion.$name", "ambiata-oss")
+
+  def app(name: String) =
+    promulgate.all(s"com.ambiata.notion.$name", "ambiata-oss", "ambiata-dist")
+
 
   lazy val testingSettings: Seq[Settings] = Seq(
     initialCommands in console := "import org.specs2._"
