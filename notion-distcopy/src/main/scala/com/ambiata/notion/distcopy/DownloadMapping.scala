@@ -1,7 +1,7 @@
 package com.ambiata.notion.distcopy
 
 import argonaut._, Argonaut._
-import com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.notion.distcopy.MappingOrphans._
 import com.ambiata.saws.s3.{S3Address, SizedS3Address}

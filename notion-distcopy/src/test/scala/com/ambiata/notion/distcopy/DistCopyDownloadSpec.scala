@@ -1,6 +1,6 @@
 package com.ambiata.notion.distcopy
 
-import com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients

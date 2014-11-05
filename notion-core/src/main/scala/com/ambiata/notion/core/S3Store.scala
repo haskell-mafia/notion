@@ -1,6 +1,6 @@
 package com.ambiata.notion.core
 
-import com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.saws.core._
 import com.ambiata.saws.s3._
 import com.ambiata.mundane.control._
