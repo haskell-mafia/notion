@@ -13,13 +13,13 @@ object Partition {
    * @return groups of files so that the difference of sizes between groups is minimal
    *         This is a special case of the balanced partition problem
    */
-  def partitionGreedily[A](items: Seq[A], n: Int, size: A => Long): List[List[A]] = {
+  def partitionGreedily[A](items: Vector[A], n: Int, size: A => Long): Vector[Vector[A]] = {
     items.sortWith((a, b) => size(a) > size(b)).foldLeft(Vector.fill(n)(Vector[A]())) { (res, cur) =>
       res.sortBy(_.map(size).map(l => BigInt(l)).sum) match {
         case head +: rest => (cur +: head) +: rest
         case empty => Vector(Vector(cur))
       }
-    }.map(_.toList).toList
+    }
   }
 
 }

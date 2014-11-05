@@ -16,7 +16,7 @@ object build extends Build {
   , aggregate =
       Seq(core, distcopy)
   )
-  .dependsOn(core)
+  .dependsOn(core, distcopy)
 
   lazy val standardSettings =
     Defaults.coreDefaultSettings ++
