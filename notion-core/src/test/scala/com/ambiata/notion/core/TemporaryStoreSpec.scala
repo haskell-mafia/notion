@@ -1,6 +1,6 @@
 package com.ambiata.notion.core
 
-import com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.notion.core.TemporaryStore._
 import com.ambiata.mundane.testing.ResultTIOMatcher._
