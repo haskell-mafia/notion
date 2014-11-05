@@ -3,8 +3,8 @@ package com.ambiata.notion.distcopy
 import java.io.FileInputStream
 import java.util.UUID
 
-import com.amazonaws.services.s3.AmazonS3Client
-import com.amazonaws.services.s3.transfer.{TransferManagerConfiguration, TransferManager}
+import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.com.amazonaws.services.s3.transfer.{TransferManagerConfiguration, TransferManager}
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.error.Throwables
 import com.ambiata.mundane.io._
