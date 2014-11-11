@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
+import com.ambiata.mundane.io.Temporary._
 import com.ambiata.notion.core.{TemporaryType => T}
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.S3Prefix
@@ -32,11 +33,11 @@ object TemporaryStore {
   def withStore[A](storeType: TemporaryType)(f: Store[ResultTIO] => ResultTIO[A]): ResultTIO[A] = {
     val store = storeType match {
       case T.Posix =>
-        PosixStore(createUniquePath)
+        PosixStore(uniqueDirPath)
       case T.S3    =>
-        S3Store(S3Prefix(testBucket, s3TempDirPath), Clients.s3, createUniquePath)
+        S3Store(S3Prefix(testBucket, s3TempPath), Clients.s3, uniqueDirPath)
       case T.Hdfs  =>
-        HdfsStore(new Configuration, createUniquePath)
+        HdfsStore(new Configuration, uniqueDirPath)
     }
     runWithStore(store)(f)
   }
@@ -44,14 +45,8 @@ object TemporaryStore {
   def runWithStore[A](store: Store[ResultTIO])(f: Store[ResultTIO] => ResultTIO[A]): ResultTIO[A] =
     ResultT.using(TemporaryStore(store).pure[ResultTIO])(tmp => f(tmp.store))
 
-  def createUniquePath: DirPath =
-    DirPath.unsafe(System.getProperty("java.io.tmpdir", "/tmp")) </> tempUniquePath
-
   def testBucket: String = Option(System.getenv("AWS_TEST_BUCKET")).getOrElse("ambiata-dev-view")
 
-  def s3TempDirPath: String =
-    s"tests/temporary-${UUID.randomUUID()}"
+  def s3TempPath: String = s"tests/temporary-${UUID.randomUUID()}"
 
-  def tempUniquePath: DirPath =
-    DirPath.unsafe(s"temporary-${UUID.randomUUID()}")
 }

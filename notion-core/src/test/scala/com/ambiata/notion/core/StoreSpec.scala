@@ -5,7 +5,7 @@ import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing._
 import com.ambiata.mundane.testing.Keys._
 import com.ambiata.mundane.testing.ResultTIOMatcher._
-import com.ambiata.notion.core.Arbitaries._
+import com.ambiata.notion.core.Arbitraries._
 import org.specs2._
 import org.specs2.matcher.Parameters
 import scodec.bits.ByteVector
