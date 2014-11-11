@@ -86,19 +86,22 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         })
         metadata = S3.ServerSideEncryption
         _        = metadata.setContentLength(length)
-        input    <- ResultT.safe[IO, FSDataInputStream](fs.open(from))
 
+        _        <- ResultT.using(ResultT.safe[IO, FSDataInputStream](fs.open(from))) {
+          inputStream =>
+          (if (length > 10.mb.toBytes.value) {
           // This should really be handled by `saws`
-        _        <- (if (length > 10.mb.toBytes.value) {
-              destination.putStreamMultiPartWithTransferManager(
-                  transferManager
-                , input
-                , () => context.progress()
-                , metadata)
-                .map( upload => upload() )
-            } else {
-              destination.putStreamWithMetadata(input, metadata)
-        }).executeT(client)
+            destination.putStreamMultiPartWithTransferManager(
+                transferManager
+              , inputStream
+              , () => context.progress()
+              , metadata
+              ).map( upload => upload()
+            )
+          } else {
+            destination.putStreamWithMetadata(inputStream, metadata)
+          }).void.executeT(client)
+        }
       } yield ()
     }).run.unsafePerformIO() match {
       case Error(e) =>
