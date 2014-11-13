@@ -58,11 +58,8 @@ object SequenceUtil {
         ResultT.safe[IO, InputStream](FileSystem.get(conf).open(new Path(p)))
       case LocalLocation(p) =>
         ResultT.safe[IO, InputStream](new LocalInputStream(p))
-      case S3Location(bucket, key) => for {
-        l <- S3Address(bucket, key).getObject.map(z => z.getObjectMetadata.getContentLength).executeT(client)
-        r = new S3InputStream(bucket, key, l, client)
-      } yield r
-
+      case S3Location(bucket, key) =>
+        S3InputStream.stream(S3Address(bucket, key), client)
     })
     r <- readThriftX(in, conf)(forRow)
   } yield r
