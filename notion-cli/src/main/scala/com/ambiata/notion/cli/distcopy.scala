@@ -6,6 +6,7 @@ import com.ambiata.notion.core.{HdfsLocation, S3Location, Location}
 import com.ambiata.notion.distcopy._
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3._
+import MemoryConversions._
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -36,8 +37,13 @@ object distcopy extends App {
                                        |""".stripMargin).
         action((a, m) => m.copy(input = a))
 
-      opt[Int]('m', "mappers").text("Number of mappers, 1 by default").
+      opt[Int]('m', "mappers").text("Number of mappers, 20 by default").
         action((a, m) => m.copy(mappers = a))
+      opt[Int]('p', "partsize").text("Minimum part size, 10mb by default").
+        action((a, m) => m.copy(minimumPartSize = a))
+      opt[Int]('t', "uploadthreshold").text("Multipart upload threshold, 100mb by default").
+        action((a, m) => m.copy(multipartUploadThreshold = a))
+
     }
 
   }
@@ -62,7 +68,7 @@ object distcopy extends App {
         none
     }
 
-  parser.parse(args, InputMappings()) match {
+  parser.parse(args, InputMappings("", 20, 10, 100)) match {
     case None =>
       exit(1)
 
@@ -85,7 +91,10 @@ object distcopy extends App {
             case None =>
               exit(1)
           })
-          r <- DistCopyJob.run(conf, client, Mappings(mappings), m.mappers)
+          r <- DistCopyJob.run(
+              Mappings(mappings)
+            , DistCopyConfiguration(conf, client, m.mappers, m.minimumPartSize.mb, m.multipartUploadThreshold.mb)
+          )
         } yield r
       } else
         ResultT.fail[IO, Unit]("No inputs")
@@ -105,5 +114,7 @@ object distcopy extends App {
   }
 }
 
-case class InputMappings(input:        String = "",
-                         mappers:      Int = 1)
+case class InputMappings(input:        String,
+                         mappers:      Int,
+                         minimumPartSize: Int,
+                         multipartUploadThreshold: Int)

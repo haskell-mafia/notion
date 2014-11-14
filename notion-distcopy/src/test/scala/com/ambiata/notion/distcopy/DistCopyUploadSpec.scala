@@ -10,6 +10,7 @@ import com.ambiata.notion.distcopy.Arbitraries._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.testing.TemporaryS3._
+import MemoryConversions._
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -36,6 +37,15 @@ Upload files from HDFS to S3
   }
   val s3Client: AmazonS3Client = Clients.s3
 
+  def distCopyConf(c: Configuration, client: AmazonS3Client): DistCopyConfiguration =
+    DistCopyConfiguration(
+        c
+      , client
+      , 1
+      , 10.mb
+      , 100.mb
+    )
+
   override implicit def defaultParameters: Parameters =
     new Parameters(minTestsOk = 3)
 
@@ -44,7 +54,7 @@ Upload files from HDFS to S3
       withFilePath(file =>
         withS3Address(address => for {
           _ <- Hdfs.writeWith(new Path(file.path), f => Streams.write(f, data.value, "UTF-8")).run(conf)
-          _ <- DistCopyJob.run(conf, s3Client, Mappings(Vector(UploadMapping(new Path(file.path), address))), 1)
+          _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
           e <- address.exists.executeT(s3Client)
           d <- address.get.executeT(s3Client)
         } yield e -> d)))
@@ -60,11 +70,11 @@ Upload files from HDFS to S3
               for {
                 _ <- Hdfs.writeWith(new Path(one.path), f => Streams.write(f, data, "UTF-8")).run(conf)
                 _ <- Hdfs.writeWith(new Path(two.path), f => Streams.write(f, data, "UTF-8")).run(conf)
-                _ <- DistCopyJob.run(conf, s3Client,
+                _ <- DistCopyJob.run(
                   Mappings(Vector(
                       UploadMapping(new Path(one.path), s3one)
                     , UploadMapping(new Path(two.path), s3two)
-                  )), 1)
+                  )), distCopyConf(conf, s3Client))
                 e1 <- s3one.exists.executeT(s3Client)
                 e2 <- s3two.exists.executeT(s3Client)
                 d1 <- s3two.get.executeT(s3Client)
@@ -76,7 +86,7 @@ Upload files from HDFS to S3
     withConf(conf =>
       withFilePath(file =>
         withS3Address(address =>
-          DistCopyJob.run(conf, s3Client, Mappings(Vector(UploadMapping(new Path(file.path), address))), 1)
+          DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
         )))
   } must beFail)
 
@@ -86,7 +96,7 @@ Upload files from HDFS to S3
         withS3Address(address => for {
           _ <- Hdfs.writeWith(new Path(file.path), f => Streams.write(f, data.value, "UTF-8")).run(conf)
           _ <- address.put(data.value).executeT(s3Client)
-          _ <- DistCopyJob.run(conf, s3Client, Mappings(Vector(UploadMapping(new Path(file.path), address))), 1)
+          _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
         } yield ())))
   } must beFail)
 
