@@ -121,7 +121,7 @@ object build extends Build {
     initialCommands in console := "import org.specs2._"
   , logBuffered := false
   , cancelable := true
-  , fork in test := true
+  , fork in Test := Option(System.getenv("NO_FORK")).map(_ != "true").getOrElse(true)
   , testOptions in Test += Tests.Setup(() => System.setProperty("log4j.configuration", "file:etc/log4j-test.properties"))
   , testOptions in Test ++= (if (Option(System.getenv("FORCE_AWS")).isDefined || Option(System.getenv("AWS_ACCESS_KEY")).isDefined)
                                Seq()
