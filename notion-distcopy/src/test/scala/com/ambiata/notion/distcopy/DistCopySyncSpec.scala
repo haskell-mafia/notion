@@ -8,7 +8,7 @@ import com.ambiata.mundane.testing.ResultTIOMatcher._
 import com.ambiata.notion.distcopy.Arbitraries._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.testing.TemporaryS3._
+import com.ambiata.saws.s3.TemporaryS3._
 import MemoryConversions._
 
 import org.apache.hadoop.conf.Configuration

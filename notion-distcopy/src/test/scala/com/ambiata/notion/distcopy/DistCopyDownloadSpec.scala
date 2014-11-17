@@ -4,7 +4,7 @@ import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.testing.TemporaryS3._
+import com.ambiata.saws.s3.TemporaryS3._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import com.ambiata.mundane.io._
