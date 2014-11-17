@@ -11,7 +11,8 @@ case class DistCopyConfiguration(
     hdfs: Configuration
   , client: AmazonS3Client
   , mappersNumber: Int
-  , minimumPartSize: BytesQuantity
+  , partSize: BytesQuantity
+  , readLimit: BytesQuantity
   , multipartUploadThreshold: BytesQuantity
 )
 

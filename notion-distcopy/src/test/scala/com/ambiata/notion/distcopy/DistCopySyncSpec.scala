@@ -36,7 +36,6 @@ Syncing files between S3 and HDFS
   override implicit def defaultParameters: Parameters =
     new Parameters(minTestsOk = 3)
 
-
   def file = propNoShrink((data: BigData) => {
     withConf(conf =>
       withFilePath(sourceFile =>
@@ -52,7 +51,7 @@ Syncing files between S3 and HDFS
                   Mappings(Vector(
                       UploadMapping(sourcePath, targetAddress)
                     , DownloadMapping(sourceAddress, targetPath)
-                  )), DistCopyConfiguration(conf, s3Client, 1, 10.mb, 100.mb))
+                  )), DistCopyConfiguration(conf, s3Client, 1, 10.mb, 10.mb, 100.mb))
                 s <- targetAddress.get.executeT(s3Client)
                 h <- Hdfs.readContentAsString(targetPath).run(conf)
               } yield s -> h })))))

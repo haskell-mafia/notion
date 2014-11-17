@@ -39,8 +39,10 @@ object distcopy extends App {
 
       opt[Int]('m', "mappers").text("Number of mappers, 20 by default").
         action((a, m) => m.copy(mappers = a))
-      opt[Int]('p', "partsize").text("Minimum part size, 10mb by default").
-        action((a, m) => m.copy(minimumPartSize = a))
+      opt[Int]('p', "partsize").text("Part size, 10mb by default").
+        action((a, m) => m.copy(partSize = a))
+      opt[Int]('r', "readlimit").text("Readlimit, 10mb by default").
+        action((a, m) => m.copy(readLimit = a))
       opt[Int]('t', "uploadthreshold").text("Multipart upload threshold, 100mb by default").
         action((a, m) => m.copy(multipartUploadThreshold = a))
 
@@ -68,7 +70,7 @@ object distcopy extends App {
         none
     }
 
-  parser.parse(args, InputMappings("", 20, 10, 100)) match {
+  parser.parse(args, InputMappings("", 20, 10, 10, 100)) match {
     case None =>
       exit(1)
 
@@ -93,7 +95,7 @@ object distcopy extends App {
           })
           r <- DistCopyJob.run(
               Mappings(mappings)
-            , DistCopyConfiguration(conf, client, m.mappers, m.minimumPartSize.mb, m.multipartUploadThreshold.mb)
+            , DistCopyConfiguration(conf, client, m.mappers, m.partSize.mb, m.readLimit.mb , m.multipartUploadThreshold.mb)
           )
         } yield r
       } else
@@ -114,7 +116,8 @@ object distcopy extends App {
   }
 }
 
-case class InputMappings(input:        String,
-                         mappers:      Int,
-                         minimumPartSize: Int,
+case class InputMappings(input: String,
+                         mappers: Int,
+                         partSize: Int,
+                         readLimit: Int,
                          multipartUploadThreshold: Int)
