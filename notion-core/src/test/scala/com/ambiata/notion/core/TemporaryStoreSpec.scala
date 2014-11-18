@@ -1,9 +1,10 @@
 package com.ambiata.notion.core
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.mundane.io.Temporary._
 import com.ambiata.mundane.control._
-import com.ambiata.notion.core.TemporaryStore._
 import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.notion.core.TemporaryStore._
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.S3Prefix
 import org.apache.hadoop.conf.Configuration
@@ -23,13 +24,13 @@ class TemporaryStoreSpec extends Specification { def is = s2"""
 
 """
   def s3Store =
-    withStore(S3Store(S3Prefix(testBucket, s3TempDirPath), Clients.s3, createUniquePath))
+    withStore(S3Store(S3Prefix(testBucket, s3TempPath), Clients.s3, uniqueDirPath))
 
   def hdfsStore =
-    withStore(HdfsStore(new Configuration, createUniquePath))
+    withStore(HdfsStore(new Configuration, uniqueDirPath))
 
   def localStore =
-    withStore(PosixStore(createUniquePath))
+    withStore(PosixStore(uniqueDirPath))
 
   def withStore(store: Store[ResultTIO]): MatchResult[ResultTIO[(Boolean, Boolean)]] =
     (for {
