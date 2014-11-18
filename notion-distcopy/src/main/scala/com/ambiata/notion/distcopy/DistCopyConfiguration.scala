@@ -11,6 +11,7 @@ case class DistCopyConfiguration(
     hdfs: Configuration
   , client: AmazonS3Client
   , mappersNumber: Int
+  , retryCount: Int
   , partSize: BytesQuantity
   , readLimit: BytesQuantity
   , multipartUploadThreshold: BytesQuantity
@@ -23,6 +24,7 @@ object DistCopyConfiguration {
   val Default = DistCopyConfiguration(
       new Configuration
     , Clients.s3
+    , 1
     , 1
     , 100.mb
     , 100.mb

@@ -39,6 +39,7 @@ Download files from S3 to HDFS
         c
       , client
       , 1
+      , 1
       , 10.mb
       , 10.mb
       , 100.mb

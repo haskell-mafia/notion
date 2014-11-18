@@ -42,6 +42,7 @@ Upload files from HDFS to S3
         c
       , client
       , 1
+      , 1
       , 10.mb
       , 10.mb
       , 100.mb
