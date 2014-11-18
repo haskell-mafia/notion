@@ -8,7 +8,8 @@ import com.ambiata.mundane.testing.ResultTIOMatcher._
 import com.ambiata.notion.distcopy.Arbitraries._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.testing.TemporaryS3._
+import com.ambiata.saws.s3.TemporaryS3._
+import MemoryConversions._
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -35,7 +36,6 @@ Syncing files between S3 and HDFS
   override implicit def defaultParameters: Parameters =
     new Parameters(minTestsOk = 3)
 
-
   def file = propNoShrink((data: BigData) => {
     withConf(conf =>
       withFilePath(sourceFile =>
@@ -47,11 +47,11 @@ Syncing files between S3 and HDFS
               for {
                 _ <- Hdfs.writeWith(sourcePath, f => Streams.write(f, data.value, "UTF-8")).run(conf)
                 _ <- sourceAddress.put(data.value).executeT(s3Client)
-                _ <- DistCopyJob.run(conf, s3Client,
+                _ <- DistCopyJob.run(
                   Mappings(Vector(
                       UploadMapping(sourcePath, targetAddress)
                     , DownloadMapping(sourceAddress, targetPath)
-                  )), 1)
+                  )), DistCopyConfiguration(conf, s3Client, 1, 10.mb, 10.mb, 100.mb))
                 s <- targetAddress.get.executeT(s3Client)
                 h <- Hdfs.readContentAsString(targetPath).run(conf)
               } yield s -> h })))))

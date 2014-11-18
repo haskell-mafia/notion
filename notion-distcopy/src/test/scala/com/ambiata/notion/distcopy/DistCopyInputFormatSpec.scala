@@ -6,7 +6,7 @@ import com.ambiata.mundane.testing.ResultTIOMatcher._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.S3Address
-import com.ambiata.saws.testing.TemporaryS3._
+import com.ambiata.saws.s3.TemporaryS3._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.specs2._

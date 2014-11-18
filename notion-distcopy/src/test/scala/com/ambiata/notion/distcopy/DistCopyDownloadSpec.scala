@@ -4,12 +4,13 @@ import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.testing.TemporaryS3._
+import com.ambiata.saws.s3.TemporaryS3._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.io.TemporaryFilePath._
 import com.ambiata.mundane.testing.ResultTIOMatcher._
+import MemoryConversions._
 
 import org.specs2._
 import org.specs2.matcher.Parameters
@@ -33,6 +34,16 @@ Download files from S3 to HDFS
 
   val s3Client: AmazonS3Client = Clients.s3
 
+  def distCopyConf(c: Configuration, client: AmazonS3Client): DistCopyConfiguration =
+    DistCopyConfiguration(
+        c
+      , client
+      , 1
+      , 10.mb
+      , 10.mb
+      , 100.mb
+    )
+
   override implicit def defaultParameters: Parameters =
     new Parameters(minTestsOk = 3)
 
@@ -43,7 +54,7 @@ Download files from S3 to HDFS
           val path = new Path(hdfs.path)
           for {
             _ <- s3.put(data).executeT(s3Client)
-            _ <- DistCopyJob.run(conf, s3Client, Mappings(Vector(DownloadMapping(s3, path))), 1)
+            _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(s3, path))), distCopyConf(conf, s3Client))
             e <- Hdfs.exists(path).run(conf)
             s <- Hdfs.readContentAsString(path).run(conf)
           } yield e -> s })))
@@ -60,7 +71,7 @@ Download files from S3 to HDFS
               for {
                 _ <- one.put(data).executeT(s3Client)
                 _ <- two.put(data).executeT(s3Client)
-                _  <- DistCopyJob.run(conf, s3Client, Mappings(Vector(DownloadMapping(one, pathOne), DownloadMapping(two, pathTwo))), 1)
+                _  <- DistCopyJob.run(Mappings(Vector(DownloadMapping(one, pathOne), DownloadMapping(two, pathTwo))), distCopyConf(conf, s3Client))
                 e1 <- Hdfs.exists(pathOne).run(conf)
                 e2 <- Hdfs.exists(pathTwo).run(conf)
                 s1 <- Hdfs.readContentAsString(pathOne).run(conf)
@@ -73,7 +84,7 @@ Download files from S3 to HDFS
       withS3Address(s3 =>
         withFilePath(hdfs => {
           val path = new Path(hdfs.path)
-          DistCopyJob.run(conf, s3Client, Mappings(Vector(DownloadMapping(s3, path))), 1)
+          DistCopyJob.run(Mappings(Vector(DownloadMapping(s3, path))), distCopyConf(conf, s3Client))
         })))
   } must beFail
 
@@ -85,7 +96,7 @@ Download files from S3 to HDFS
           for {
             _ <- s3.put(data).executeT(s3Client)
             _ <- Hdfs.writeWith(path, f => ResultT.safe(f.write(0))).run(conf)
-            _ <- DistCopyJob.run(conf, s3Client, Mappings(Vector(DownloadMapping(s3, path))), 1)
+            _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(s3, path))), distCopyConf(conf, s3Client))
           } yield () })))
   } must beFail)
 

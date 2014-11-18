@@ -1,5 +1,6 @@
 package com.ambiata.notion.distcopy
 
+import java.io._
 import java.util.UUID
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
@@ -15,24 +16,30 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path, FSDataOutputStream, FSDataInputStream}
 import org.apache.hadoop.io._
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, TextOutputFormat}
-import org.apache.hadoop.mapreduce.{Mapper, Job}
-import MemoryConversions._
+import org.apache.hadoop.mapreduce.{Mapper, Job, Counter}
+
+import DistCopyJob._
 
 import scalaz._, Scalaz._, effect._, effect.Effect._
 
 object DistCopyJob {
-  def run(conf: Configuration, client: AmazonS3Client, mappings: Mappings, mappersNumber: Int): ResultTIO[Unit] = for {
-    job <- ResultT.safe[IO, Job](Job.getInstance(conf))
+  val PartSize = "distcopy.part.size"
+  val ReadLimit = "distcopy.read.limit"
+  val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
+
+  def run(mappings: Mappings, conf: DistCopyConfiguration): ResultTIO[Unit] = for {
+    job <- ResultT.safe[IO, Job](Job.getInstance(conf.hdfs))
     ctx <- ResultT.safe[IO, MrContext](MrContext.newContext("notion-distcopy-sync", job))
     _   <- ResultT.safe[IO, Unit]({
       job.setJobName(ctx.id.value)
       job.setInputFormatClass(classOf[DistCopyInputFormat])
       job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
       job.setNumReduceTasks(0)
+      job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
+      job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
+      job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
     })
-
-    _   <- DistCopyInputFormat.setMappings(job, ctx, client, mappings, mappersNumber)
-
+    _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, conf.mappersNumber)
     _   <- ResultT.safe[IO, Unit]({
       job.setJarByClass(classOf[DistCopyMapper])
       job.setMapperClass(classOf[DistCopyMapper])
@@ -47,7 +54,6 @@ object DistCopyJob {
   } yield ()
 }
 
-
 /*
   Validation is delayed until the mappers so that the client is not required to pre-compute the
   validity of all workloads. A faster-fail check can be added in downstream projects when possible
@@ -55,15 +61,33 @@ object DistCopyJob {
 class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWritable] {
   private var transferManager: TransferManager = null
   val client = Clients.s3
+  var totalBytesUploaded: Counter = null
+  var totalFilesUploaded: Counter = null
+  var totalBytesDownloaded: Counter = null
+  var totalFilesDownloaded: Counter = null
+  var partSize: Long = 0
+  var readLimit: Int = 0
+  var multipartUploadThreshold: Long = 0
 
   override def setup(context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
+    partSize =
+      context.getConfiguration.getLong(PartSize, DistCopyConfiguration.Default.partSize.toBytes.value)
+    readLimit =
+      context.getConfiguration.getInt(ReadLimit, DistCopyConfiguration.Default.readLimit.toBytes.value.toInt)
+    multipartUploadThreshold =
+      context.getConfiguration.getLong(MultipartUploadThreshold, DistCopyConfiguration.Default.multipartUploadThreshold.toBytes.value)
+
     // create a transfer manager for all uploads to spare resources
     // don't shut it down after the upload because that shuts down the client
     val configuration = new TransferManagerConfiguration
-    configuration.setMinimumUploadPartSize(10.mb.toBytes.value)
-    configuration.setMultipartUploadThreshold(100.mb.toBytes.value.toInt)
+    configuration.setMinimumUploadPartSize(partSize)
+    configuration.setMultipartUploadThreshold(multipartUploadThreshold)
     transferManager = new TransferManager(client)
     transferManager.setConfiguration(configuration)
+    totalBytesUploaded = context.getCounter("notion", "total.bytes.uploaded")
+    totalFilesUploaded = context.getCounter("notion", "total.files.uploaded")
+    totalBytesDownloaded = context.getCounter("notion", "total.bytes.downloaded")
+    totalFilesDownloaded = context.getCounter("notion", "total.files.downloaded")
   }
 
   override def map(key: NullWritable, value: Mapping, context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit =
@@ -73,9 +97,17 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
         _               <- ResultT.using(ResultT.safe[IO, FSDataOutputStream](FileSystem.get(context.getConfiguration).create(tmpDestination))) {
-          outputStream => from.withStreamMultipart(32.mb, in => Streams.pipe(in, outputStream), () => context.progress()).executeT(client)
+          outputStream => from.withStreamMultipart(
+              Bytes(partSize)
+            , in => {
+                val counted = DownloadInputStream(in, i => totalBytesDownloaded.increment(i))
+                Streams.pipe(counted, outputStream)
+              }
+            , () => context.progress()
+          ).executeT(client)
         }
         _               <- Hdfs.mv(tmpDestination, destination).run(context.getConfiguration)
+        _               = totalFilesDownloaded.increment(1)
       } yield ()
 
       case UploadMapping(from, destination)   => for {
@@ -89,12 +121,16 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
 
         _        <- ResultT.using(ResultT.safe[IO, FSDataInputStream](fs.open(from))) {
           inputStream =>
-          (if (length > 10.mb.toBytes.value) {
+          (if (length > partSize) {
           // This should really be handled by `saws`
             destination.putStreamMultiPartWithTransferManager(
                 transferManager
               , inputStream
-              , () => context.progress()
+              , readLimit
+              , (i: Long) => {
+                  totalBytesUploaded.increment(i)
+                  context.progress()
+                }
               , metadata
               ).map( upload => upload()
             )
@@ -102,6 +138,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
             destination.putStreamWithMetadata(inputStream, metadata)
           }).void.executeT(client)
         }
+        _       = totalFilesUploaded.increment(1)
       } yield ()
     }).run.unsafePerformIO() match {
       case Error(e) =>
@@ -119,12 +156,12 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     // Check source file exists
     from.exists.executeT(client).flatMap(
       ResultT.unless(_,
-        ResultT.failIO[Unit](s"notion dist-copy failed - no source file. ( ${from.render} )")
+        ResultT.failIO[Unit](s"notion dist-copy download failed - no source file. ( ${from.render} )")
       )) >>
     // Check no file in target location
     Hdfs.exists(to).run(conf).flatMap(
       ResultT.when(_,
-        ResultT.failIO[Unit](s"notion dist-copy failed - target file exists. ( ${to.toString} )")
+        ResultT.failIO[Unit](s"notion dist-copy download failed - target file exists. ( ${to.toString} )")
       ))
   }
 
@@ -132,12 +169,14 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     // Check source file exists
     Hdfs.exists(from).run(conf).flatMap(
       ResultT.unless(_,
-        ResultT.failIO[Unit](s"notion dist-copy failed - no source file. ( ${from.toString} )")
+        ResultT.failIO[Unit](s"notion dist-copy upload failed - no source file. ( ${from.toString} )")
       )) >>
     // Check no file in target location
     to.exists.executeT(client).flatMap(
       ResultT.when(_,
-        ResultT.failIO[Unit](s"notion dist-copy failed - target file exists. ( ${to.render} )")
+        ResultT.failIO[Unit](s"notion dist-copy upload failed - target file exists. ( ${to.render} )")
       ))
   }
+
+
 }
