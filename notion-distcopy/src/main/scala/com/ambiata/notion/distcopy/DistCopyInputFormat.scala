@@ -50,8 +50,11 @@ class DistCopyInputFormat extends InputFormat[NullWritable, Mapping] {
       def getCurrentValue: Mapping =
         mappings.mappings(split.workload.indexes(index))
 
-      def getProgress: Float =
-        index / split.workload.indexes.size
+      def getProgress: Float = {
+        val i = split.workload.indexes.size
+        if (i > 0) index / i
+        else 0
+      }
 
       def close {}
 
