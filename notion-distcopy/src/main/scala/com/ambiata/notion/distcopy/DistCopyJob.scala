@@ -100,6 +100,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     val action: S3Action[Unit] = value match {
       case DownloadMapping(from, destination) => for {
         _               <- validateDownload(from, destination, client, context.getConfiguration)
+        _               = println(s"Downloading: ${from.render} ===> $destination")
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
         _               <- Aws.using(S3Action.safe[FSDataOutputStream](FileSystem.get(context.getConfiguration).create(tmpDestination))) {
@@ -112,6 +113,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
             , () => context.progress()
           )
         }
+        _               = println(s"Moving: $tmpDestination ===> $destination")
+        _               <- S3Action.fromResultT(Hdfs.mkdir(destination.getParent).run(context.getConfiguration))
         _               <- S3Action.fromResultT(Hdfs.mv(tmpDestination, destination).run(context.getConfiguration))
         _               = totalFilesDownloaded.increment(1)
       } yield ()
