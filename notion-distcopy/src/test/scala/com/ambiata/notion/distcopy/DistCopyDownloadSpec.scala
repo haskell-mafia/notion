@@ -9,6 +9,7 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.io.TemporaryFilePath._
+import com.ambiata.mundane.io.TemporaryDirPath._
 import com.ambiata.mundane.testing.ResultTIOMatcher._
 import MemoryConversions._
 
@@ -21,6 +22,7 @@ Download files from S3 to HDFS
 ==============================
   Download file                               $downloadFile
   Download multiple files                     $downloadFiles
+  Download nested files                       $nestedFiles
   Handle failure (no source file)             $noSourceFile
   Handle failure (target file exists)         $targetExists
 
@@ -79,6 +81,30 @@ Download files from S3 to HDFS
                 s2 <- Hdfs.readContentAsString(pathTwo).run(conf)
               } yield (e1, e2, s1, s2) })))))
   } must beOkValue((true, true, data, data)))
+
+  def nestedFiles = prop((data: String) => {
+    withConf(conf =>
+      withS3Prefix(prefix =>
+        withDirPath(dir => {
+          val one = prefix / "foos" | "foo"
+          val two = prefix / "foos" | "bar"
+          val three = prefix / "foos" / "bars" | "bar"
+          val pathOne = new Path((dir </> DirPath.unsafe("foos") </> FilePath.unsafe("foo")).path)
+          val pathTwo = new Path((dir </> DirPath.unsafe("foos") </> FilePath.unsafe("bar")).path)
+          val pathThree = new Path((dir </> DirPath.unsafe("foos") </> DirPath.unsafe("bars") </> FilePath.unsafe("foo")).path)
+          for {
+            _  <- one.put(data).executeT(s3Client)
+            _  <- two.put(data).executeT(s3Client)
+            _  <- three.put(data).executeT(s3Client)
+            _  <- DistCopyJob.run(Mappings(Vector(DownloadMapping(one, pathOne), DownloadMapping(two, pathTwo), DownloadMapping(three, pathThree))), distCopyConf(conf, s3Client))
+            e1 <- Hdfs.exists(pathOne).run(conf)
+            e2 <- Hdfs.exists(pathTwo).run(conf)
+            e3 <- Hdfs.exists(pathThree).run(conf)
+            s1 <- Hdfs.readContentAsString(pathOne).run(conf)
+            s2 <- Hdfs.readContentAsString(pathTwo).run(conf)
+            s3 <- Hdfs.readContentAsString(pathThree).run(conf)
+          } yield (e1, e2, e3, s1, s2, s3) })))
+  } must beOkValue((true, true, true, data, data, data)))
 
   def noSourceFile = {
     withConf(conf =>
