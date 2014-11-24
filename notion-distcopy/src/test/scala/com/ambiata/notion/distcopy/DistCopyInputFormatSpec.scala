@@ -45,7 +45,7 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
               )), 2, s3Client, conf)
           } yield r
         })))
-  } must beOkValue(Workloads(Vector(Workload(Vector(2, 0)), Workload(Vector(1)))))
+  } must beOkValue(Workloads(Vector(Workload(Vector(1)), Workload(Vector(0, 2)))))
 
 
   def download = {
@@ -65,6 +65,6 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
               )), 2, s3Client, conf)
           } yield r
         })))
-  } must beOkValue(Workloads(Vector(Workload(Vector(2, 1)), Workload(Vector(0)))))
+  } must beOkValue(Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2)))))
 
 }
