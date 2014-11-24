@@ -86,6 +86,7 @@ object DistCopyInputFormat {
         ResultT.when(b % 1000 == 0, println(s"File size calculated: $b of ${mappings.mappings.size}").pure[ResultTIO]) >>
         size((a, b), client, conf).map(lon => (a, b, lon))
     })
+    _ = println(s"File size calculated: ${mappings.mappings.size} of ${mappings.mappings.size}")
     getSize = { p : (Mapping, Int, Long) => p._3 }
     partitions = Partition.partitionGreedily[(Mapping, Int, Long)](s, mappers, getSize)
   } yield Workloads(partitions.map(_.map(_._2)).map(z => Workload(z)))
