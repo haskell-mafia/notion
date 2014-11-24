@@ -82,7 +82,9 @@ object DistCopyInputFormat {
 
   def calc(mappings: Mappings, mappers: Int, client: AmazonS3Client, conf: Configuration): ResultTIO[Workloads] = for {
     s <- mappings.mappings.zipWithIndex.traverse[ResultTIO, (Mapping, Int, Long)]({
-      case (a, b) => size((a, b), client, conf).map(lon => (a, b, lon))
+      case (a, b) =>
+        ResultT.when(b % 1000 == 0, println(s"File size calculated: $b of ${mappings.mappings.size}").pure[ResultTIO]) >>
+        size((a, b), client, conf).map(lon => (a, b, lon))
     })
     getSize = { p : (Mapping, Int, Long) => p._3 }
     partitions = Partition.partitionGreedily[(Mapping, Int, Long)](s, mappers, getSize)
