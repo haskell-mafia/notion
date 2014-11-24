@@ -10,13 +10,15 @@ class PartitionSpec extends Specification with ScalaCheck { def is = s2"""
  ===================================
 
  Correct result with two groups
-  ${partitionGreedily(Vector(1, 2, 3), 2, (i: Int) => i) ==== Vector(Vector(1, 2), Vector(3))}
+  ${partitionGreedily(Vector(1, 2, 3), 2, (i: Int) => i) ==== Vector(Vector(3), Vector(2, 1))}
 
  Correct result with three groups
-  ${partitionGreedily(Vector(1, 2, 3, 4), 3, (i: Int) => i) ==== Vector(Vector(1, 2), Vector(3), Vector(4))}
+  ${partitionGreedily(Vector(1, 2, 3, 4), 3, (i: Int) => i) ==== Vector(Vector(4), Vector(3), Vector(2, 1))}
 
  Correct number of groups
   ${propNoShrink((i: Int) => (i > 0 && (i % 100 != 0)) ==> { partitionGreedily(Vector.fill(i % 100)(1), i % 100, (i: Int) => i).length ==== i % 100 }) }
+
+ foo  ${ val s = System.currentTimeMillis; val x = (1 to 12).toVector; val r = partitionGreedily(x, 20, (i: Int) => i).length; ; println(s"End ${System.currentTimeMillis - s}"); r ==== 20 }
 
 """
 

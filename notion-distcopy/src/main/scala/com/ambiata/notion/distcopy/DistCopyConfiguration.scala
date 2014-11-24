@@ -25,7 +25,7 @@ object DistCopyConfiguration {
       new Configuration
     , Clients.s3
     , 1
-    , 1
+    , 3
     , 100.mb
     , 100.mb
     , 100.mb

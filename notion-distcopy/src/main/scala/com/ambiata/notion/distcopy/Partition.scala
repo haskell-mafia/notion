@@ -13,14 +13,20 @@ object Partition {
    * @return groups of files so that the difference of sizes between groups is minimal
    *         This is a special case of the balanced partition problem
    */
-  def partitionGreedily[A](items: Vector[A], n: Int, size: A => Long): Vector[Vector[A]] = {
-    items.sortWith((a, b) => size(a) > size(b)).foldLeft(Vector.fill(n)(Vector[A]())) { (res, cur) =>
-      res.sortBy(_.map(size).map(l => BigInt(l)).sum) match {
-        case head +: rest => (cur +: head) +: rest
-        case empty => Vector(Vector(cur))
+  def partitionGreedily[A : scala.reflect.ClassTag](itemsv: Vector[A], n: Int, size: A => Long): Vector[Vector[A]] = {
+    val items = itemsv.toArray.sortWith((a, b) => size(a) > size(b))
+    val result = Array.fill(n)(new scala.collection.mutable.ListBuffer[A])
+    val sizes = new Array[Long](n)
+    items.foreach(item => {
+      var smallest = 0
+      var i = 0; while (i < sizes.length) {
+        if (sizes(i) < sizes(smallest))
+          smallest = i
+        i += 1
       }
-    }
+      result(smallest) += item
+      sizes(smallest) += size(item)
+    })
+    result.map(_.toVector).toVector
   }
-
 }
-
