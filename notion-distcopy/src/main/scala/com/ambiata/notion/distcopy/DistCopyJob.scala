@@ -35,7 +35,7 @@ object DistCopyJob {
       job.setJobName(ctx.id.value)
       job.setInputFormatClass(classOf[DistCopyInputFormat])
       job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
-      job.getConfiguration.setInt("mapreduce.map.maxattempts"", 1)
+      job.getConfiguration.setInt("mapreduce.map.maxattempts", 1)
       job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
       job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
       job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
