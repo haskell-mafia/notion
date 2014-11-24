@@ -11,7 +11,8 @@ import org.apache.hadoop.mapreduce._
 
 import argonaut.{Context => _, _}, Argonaut._
 
-import scalaz._, Scalaz._, effect._
+import scalaz._, Scalaz._, effect._, concurrent.Task
+import scalaz.\&/._
 
 import scala.collection.JavaConverters._
 
@@ -81,14 +82,12 @@ object DistCopyInputFormat {
   }
 
   def calc(mappings: Mappings, mappers: Int, client: AmazonS3Client, conf: Configuration): ResultTIO[Workloads] = for {
-    s <- mappings.mappings.zipWithIndex.traverse[ResultTIO, (Mapping, Int, Long)]({
+    s <- (ResultT.fromDisjunction[IO, List[ResultTIO[(Mapping, Int, Long)]]](Task.gatherUnordered(mappings.mappings.zipWithIndex.map({
       case (a, b) =>
-        ResultT.when(b % 1000 == 0, println(s"File size calculated: $b of ${mappings.mappings.size}").pure[ResultTIO]) >>
-        size((a, b), client, conf).map(lon => (a, b, lon))
-    })
-    _ = println(s"File size calculated: ${mappings.mappings.size} of ${mappings.mappings.size}")
+        Task.delay( size((a, b), client, conf).map(l => (a, b, l)) )
+    })).attemptRun.leftMap(That (_)) ).flatMap(_.sequenceU))
     getSize = { p : (Mapping, Int, Long) => p._3 }
     _ = println(s"Total file size to copy: ${s.map(getSize).sum}")
-    partitions = Partition.partitionGreedily[(Mapping, Int, Long)](s, mappers, getSize)
+    partitions = Partition.partitionGreedily[(Mapping, Int, Long)](s.toVector, mappers, getSize)
   } yield Workloads(partitions.map(_.map(_._2)).map(z => Workload(z)))
 }
