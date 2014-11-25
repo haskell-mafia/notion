@@ -88,6 +88,7 @@ object DistCopyInputFormat {
     })
     _ = println(s"File size calculated: ${mappings.mappings.size} of ${mappings.mappings.size}")
     getSize = { p : (Mapping, Int, Long) => p._3 }
+    _ = println(s"Total file size to copy: ${s.map(getSize).sum}")
     partitions = Partition.partitionGreedily[(Mapping, Int, Long)](s, mappers, getSize)
   } yield Workloads(partitions.map(_.map(_._2)).map(z => Workload(z)))
 }
