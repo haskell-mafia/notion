@@ -8,6 +8,7 @@ import com.ambiata.poacher.mr.{DistCache, MrContext}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.NullWritable
 import org.apache.hadoop.mapreduce._
+import com.ambiata.mundane.io._
 
 import argonaut.{Context => _, _}, Argonaut._
 
@@ -87,7 +88,7 @@ object DistCopyInputFormat {
         Task.delay( size((a, b), client, conf).map(l => (a, b, l)) )
     })).attemptRun.leftMap(That (_)) ).flatMap(_.sequenceU))
     getSize = { p : (Mapping, Int, Long) => p._3 }
-    _ = println(s"Total file size to copy: ${s.map(getSize).sum}")
+    _ = println(s"Total file size to copy: ( ${s.map(getSize).sum}b ) - ${Bytes(s.map(getSize).sum).toMegabytes.value}mb")
     partitions = Partition.partitionGreedily[(Mapping, Int, Long)](s.toVector, mappers, getSize)
   } yield Workloads(partitions.map(_.map(_._2)).map(z => Workload(z)))
 }
