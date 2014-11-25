@@ -54,7 +54,7 @@ class DistCopyInputFormat extends InputFormat[NullWritable, Mapping] {
 
       def getProgress: Float = {
         val i = split.workload.indexes.size
-        if (i > 0) index / i
+        if (i > 0) index.toFloat / i
         else 0
       }
 
