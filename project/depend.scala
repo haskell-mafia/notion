@@ -17,10 +17,8 @@ object depend {
   val saws      = Seq("com.ambiata"          %% "saws-s3"            % sawsVersion excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
-    ExclusionRule(organization = "com.owtelse.codec"),
-    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.10"),
-    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.11")
-  ))
+    ExclusionRule(organization = "com.owtelse.codec")
+  )) ++           Seq("com.ambiata"          %% "saws-testing"       % sawsVersion % "test")
 
   val mundaneVersion = "1.2.1-20141024050817-e2b01b2"
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
