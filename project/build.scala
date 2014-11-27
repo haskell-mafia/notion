@@ -14,7 +14,7 @@ object build extends Build {
     standardSettings ++
     promulgate.library("com.ambiata.notion", "ambiata-oss")
   , aggregate =
-      Seq(core, distcopy, cli)
+      Seq(core, distcopy)
   )
   .dependsOn(core, distcopy)
 
@@ -65,19 +65,6 @@ object build extends Build {
       depend.hadoop(version.value))
   )
   .dependsOn(core)
-
-  lazy val cli = Project(
-    id = "cli"
-  , base = file("notion-cli")
-  , settings = standardSettings ++ app("cli") ++ Seq[Settings](
-    name := "notion-cli"
-  ) ++ Seq[Settings](libraryDependencies ++=
-      depend.scopt ++
-      depend.saws ++
-      depend.mundane ++
-      depend.hadoop(version.value))
-  ).dependsOn(core, distcopy)
-
 
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(
