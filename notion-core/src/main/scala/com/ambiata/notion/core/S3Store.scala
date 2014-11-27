@@ -224,7 +224,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
     def withOutputStream(key: Key)(f: OutputStream => ResultT[IO, Unit]): ResultT[IO, Unit] = {
       val unique = Key.unsafe(UUID.randomUUID.toString)
       local.unsafe.withOutputStream(unique)(f) >> local.unsafe.withInputStream(unique)(in =>
-        run { (s3 | key.name).putStreamWithMetadata(in, {
+        run { (s3 | key.name).putStreamWithMetadata(in, S3Address.ReadLimitDefault, {
           val metadata = S3.ServerSideEncryption
           metadata.setContentLength((local.root </> keyToFilePath(unique)).toFile.length)
           metadata

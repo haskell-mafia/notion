@@ -13,13 +13,11 @@ object depend {
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
 
-  val sawsVersion = "1.2.1-20141124235740-adf1a0c"
+  val sawsVersion = "1.2.1-20141127045531-4baa4f4"
   val saws      = Seq("com.ambiata"          %% "saws-s3"            % sawsVersion excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
-    ExclusionRule(organization = "com.owtelse.codec"),
-    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.10"),
-    ExclusionRule(organization = "com.ambiata", name = "mundane-testing_2.11")
+    ExclusionRule(organization = "com.owtelse.codec")
   ))
 
   val mundaneVersion = "1.2.1-20141024050817-e2b01b2"

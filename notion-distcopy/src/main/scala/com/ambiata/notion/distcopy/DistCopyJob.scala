@@ -128,11 +128,13 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         })
         metadata = S3.ServerSideEncryption
         _        = metadata.setContentLength(length)
-
+        _               = println(s"Uploading: $from ===> ${destination.render}")
+        _               = println(s"\tFile size: ${Bytes(length).toMegabytes.value}mb")
         _        <- Aws.using(S3Action.safe[FSDataInputStream](fs.open(from))) {
           inputStream =>
           (if (length > partSize) {
           // This should really be handled by `saws`
+            println(s"\tRunning multi-part upload")
             destination.putStreamMultiPartWithTransferManager(
                 transferManager
               , inputStream
@@ -145,7 +147,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
               ).map( upload => upload()
             )
           } else {
-            destination.putStreamWithMetadata(inputStream, metadata)
+            println(s"\tRunning stream upload")
+            destination.putStreamWithMetadata(inputStream, readLimit, metadata)
           }).void
         }
         _       = totalFilesUploaded.increment(1)
