@@ -100,7 +100,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   override def map(key: NullWritable, value: Mapping, context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
     val action: S3Action[Unit] = value match {
       case DownloadMapping(from, destination) => for {
-        _               <- validateDownload(from, destination, client, context.getConfiguration)
+        _               <- validateDownload(destination, client, context.getConfiguration)
         _               = println(s"Downloading: ${from.render} ===> $destination")
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
@@ -121,7 +121,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       } yield ()
 
       case UploadMapping(from, destination)   => for {
-        _        <- validateUpload(from, destination, client, context.getConfiguration)
+        _        <- validateUpload(destination, client, context.getConfiguration)
         fs       = FileSystem.get(context.getConfiguration)
         length   <- S3Action.safe[Long]({
           fs.getFileStatus(from).getLen
@@ -171,27 +171,17 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     transferManager.shutdownNow()
   }
 
-  def validateDownload(from: S3Address, to: Path, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
-    // Check source file exists
-    S3Action.fromResultT(from.exists.executeT(client).flatMap(
-      ResultT.unless(_,
-        ResultT.failIO[Unit](s"notion dist-copy download failed - no source file. ( ${from.render} )")
-      )) >>
+  def validateDownload(to: Path, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
     // Check no file in target location
-    Hdfs.exists(to).run(conf).flatMap(
+    S3Action.fromResultT(Hdfs.exists(to).run(conf).flatMap(
       ResultT.when(_,
         ResultT.failIO[Unit](s"notion dist-copy download failed - target file exists. ( ${to.toString} )")
       )))
   }
 
-  def validateUpload(from: Path, to: S3Address, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
-    // Check source file exists
-    S3Action.fromResultT(Hdfs.exists(from).run(conf).flatMap(
-      ResultT.unless(_,
-        ResultT.failIO[Unit](s"notion dist-copy upload failed - no source file. ( ${from.toString} )")
-      )) >>
+  def validateUpload(to: S3Address, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
     // Check no file in target location
-    to.exists.executeT(client).flatMap(
+    S3Action.fromResultT(to.exists.executeT(client).flatMap(
       ResultT.when(_,
         ResultT.failIO[Unit](s"notion dist-copy upload failed - target file exists. ( ${to.render} )")
       )))
