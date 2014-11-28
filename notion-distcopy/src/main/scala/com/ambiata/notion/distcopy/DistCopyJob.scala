@@ -141,8 +141,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         })
         metadata = S3.ServerSideEncryption
         _        = metadata.setContentLength(length)
-        _               = println(s"Uploading: $from ===> ${destination.render}")
-        _               = println(s"\tFile size: ${length / 1024 / 1024}mb")
+        _        = println(s"Uploading: $from ===> ${destination.render}")
+        _        = println(s"\tFile size: ${length / 1024 / 1024}mb")
         // Wrapping FSDataInputStream in BufferedInputStream to fix overflows on reset of the stream
         _        <- Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
           inputStream =>
