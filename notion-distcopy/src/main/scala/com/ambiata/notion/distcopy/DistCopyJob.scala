@@ -66,6 +66,10 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   var totalBytesUploaded: Counter = null
   var totalFilesUploaded: Counter = null
   var totalBytesDownloaded: Counter = null
+  var totalMegabytesDownloaded: Counter = null
+  var totalGigabytesDownloaded: Counter = null
+  var totalMegabytesUploaded: Counter = null
+  var totalGigabytesUploaded: Counter = null
   var totalFilesDownloaded: Counter = null
   var retryCounter: Counter = null
   var partSize: Long = 0
@@ -91,8 +95,12 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     transferManager = new TransferManager(client)
     transferManager.setConfiguration(configuration)
     totalBytesUploaded = context.getCounter("notion", "total.bytes.uploaded")
+    totalMegabytesUploaded = context.getCounter("notion", "total.megabytes.uploaded")
+    totalGigabytesUploaded = context.getCounter("notion", "total.gigabytes.uploaded")
     totalFilesUploaded = context.getCounter("notion", "total.files.uploaded")
     totalBytesDownloaded = context.getCounter("notion", "total.bytes.downloaded")
+    totalMegabytesDownloaded = context.getCounter("notion", "total.megabytes.downloaded")
+    totalGigabytesDownloaded = context.getCounter("notion", "total.gigabytes.downloaded")
     totalFilesDownloaded = context.getCounter("notion", "total.files.downloaded")
     retryCounter = context.getCounter("notion", "total.files.retried")
   }
@@ -108,7 +116,12 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           outputStream => from.withStreamMultipart(
               Bytes(partSize)
             , in => {
-                val counted = DownloadInputStream(in, i => totalBytesDownloaded.increment(i))
+                val counted = DownloadInputStream(in, i => {
+                  totalBytesDownloaded.increment(i)
+                  val bytes = totalBytesDownloaded.getValue
+                  totalMegabytesDownloaded.setValue(bytes / 1024 / 1024)
+                  totalGigabytesDownloaded.setValue(bytes / 1024 / 1024 / 1024)
+                })
                 Streams.pipe(counted, outputStream)
               }
             , () => context.progress()
@@ -128,8 +141,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         })
         metadata = S3.ServerSideEncryption
         _        = metadata.setContentLength(length)
-        _               = println(s"Uploading: $from ===> ${destination.render}")
-        _               = println(s"\tFile size: ${Bytes(length).toMegabytes.value}mb")
+        _        = println(s"Uploading: $from ===> ${destination.render}")
+        _        = println(s"\tFile size: ${length / 1024 / 1024}mb")
         // Wrapping FSDataInputStream in BufferedInputStream to fix overflows on reset of the stream
         _        <- Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
           inputStream =>
@@ -148,6 +161,10 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
               ).flatMap(upload => S3Action.safe(upload()))
           } else {
             println(s"\tRunning stream upload")
+            totalBytesUploaded.increment(length)
+            val bytes = totalBytesUploaded.getValue
+            totalMegabytesUploaded.setValue(bytes / 1024 / 1024)
+            totalGigabytesUploaded.setValue(bytes / 1024 / 1024 / 1024)
             destination.putStreamWithMetadata(inputStream, readLimit, metadata)
           }).void
         }
