@@ -145,31 +145,38 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         _        = println(s"\tFile size: ${length / 1024 / 1024}mb")
         // Wrapping FSDataInputStream in BufferedInputStream to fix overflows on reset of the stream
         _        <- Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
-          inputStream =>
-          (if (length > partSize) {
-          // This should really be handled by `saws`
-            println(s"\tRunning multi-part upload")
-            destination.putStreamMultiPartWithTransferManager(
-                transferManager
-              , inputStream
-              , readLimit
-              , (i: Long) => {
-                  totalBytesUploaded.increment(i)
-                  context.progress()
-                }
-              , metadata
+          inputStream => {
+            def update() = {
+              val bytes = totalBytesUploaded.getValue
+              totalMegabytesUploaded.setValue(bytes / 1024 / 1024)
+              totalGigabytesUploaded.setValue(bytes / 1024 / 1024 / 1024)
+            }
+
+            (if (length > partSize) {
+              // This should really be handled by `saws`
+              println(s"\tRunning multi-part upload")
+              destination.putStreamMultiPartWithTransferManager(
+                  transferManager
+                , inputStream
+                , readLimit
+                , (i: Long) => {
+                    totalBytesUploaded.increment(i)
+                    update()
+                    context.progress()
+                  }
+                , metadata
               ).flatMap(upload => S3Action.safe(upload()))
-          } else {
-            println(s"\tRunning stream upload")
-            totalBytesUploaded.increment(length)
-            val bytes = totalBytesUploaded.getValue
-            totalMegabytesUploaded.setValue(bytes / 1024 / 1024)
-            totalGigabytesUploaded.setValue(bytes / 1024 / 1024 / 1024)
-            destination.putStreamWithMetadata(inputStream, readLimit, metadata)
-          }).void
+            } else {
+              println(s"\tRunning stream upload")
+              totalBytesUploaded.increment(length)
+              update()
+              destination.putStreamWithMetadata(inputStream, readLimit, metadata)
+            }).void
+          }
         }
         _       = totalFilesUploaded.increment(1)
-      } yield ()
+
+        } yield ()
     }
 
     val retryHandler = (n: Int, e: String \&/ Throwable) => {
