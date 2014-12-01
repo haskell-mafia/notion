@@ -7,7 +7,18 @@ import org.apache.hadoop.fs.Path
 
 import scalaz._, Scalaz._
 
-sealed trait Mapping
+sealed trait Mapping {
+  def render: String = {
+    this match {
+      case DownloadMapping(f, t) =>
+        s"$f,$t"
+      case UploadMapping(f, t) =>
+        s"$f,$t"
+    }
+  }
+
+}
+
 case class DownloadMapping(from: S3Address, to: Path) extends Mapping
 case class UploadMapping(from: Path, to: S3Address) extends Mapping
 

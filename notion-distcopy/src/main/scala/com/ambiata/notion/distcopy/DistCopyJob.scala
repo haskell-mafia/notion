@@ -106,13 +106,21 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   }
 
   override def map(key: NullWritable, value: Mapping, context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
+    val retryHandler = (n: Int, e: String \&/ Throwable) => {
+      println(s"Retrying ...")
+      println(Result.asString(e))
+      retryCounter.increment(1)
+      context.progress()
+      Vector()
+    }
+
     val action: S3Action[Unit] = value match {
       case DownloadMapping(from, destination) => for {
         _               <- validateDownload(destination, client, context.getConfiguration)
         _               = println(s"Downloading: ${from.render} ===> $destination")
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
-        _               <- Aws.using(S3Action.safe[FSDataOutputStream](FileSystem.get(context.getConfiguration).create(tmpDestination))) {
+        _               <- (Aws.using(S3Action.safe[FSDataOutputStream](FileSystem.get(context.getConfiguration).create(tmpDestination))) {
           outputStream => from.withStreamMultipart(
               Bytes(partSize)
             , in => {
@@ -126,7 +134,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
               }
             , () => context.progress()
           )
-        }
+        }).retry(retryCount, retryHandler)
         _               = println(s"Moving: $tmpDestination ===> $destination")
         _               <- S3Action.fromResultT(Hdfs.mkdir(destination.getParent).run(context.getConfiguration))
         _               <- S3Action.fromResultT(Hdfs.mv(tmpDestination, destination).run(context.getConfiguration))
@@ -144,7 +152,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         _        = println(s"Uploading: $from ===> ${destination.render}")
         _        = println(s"\tFile size: ${length / 1024 / 1024}mb")
         // Wrapping FSDataInputStream in BufferedInputStream to fix overflows on reset of the stream
-        _        <- Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
+        _        <- (Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
           inputStream => {
             def update() = {
               val bytes = totalBytesUploaded.getValue
@@ -173,19 +181,13 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
               destination.putStreamWithMetadata(inputStream, readLimit, metadata)
             }).void
           }
-        }
+        }).retry(retryCount, retryHandler)
         _       = totalFilesUploaded.increment(1)
 
         } yield ()
     }
 
-    val retryHandler = (n: Int, e: String \&/ Throwable) => {
-      retryCounter.increment(1)
-      context.progress()
-      Vector()
-    }
-
-    action.retry(retryCount, retryHandler).execute(client).unsafePerformIO() match {
+    action.execute(client).unsafePerformIO() match {
       case Error(e) =>
         sys.error(Result.asString(e))
       case Ok(_) =>
