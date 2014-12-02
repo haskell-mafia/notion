@@ -92,7 +92,7 @@ class LocationIOSpec extends Specification with ForeachTemporaryType with Thrown
     }
   }
 
-  def locationIO = LocationIO(new Configuration, Clients.s3)
+  def locationIO = LocationIO.default
 
 }
 

@@ -2,6 +2,7 @@ package com.ambiata.notion
 package io
 
 import java.io.File
+import com.ambiata.saws.core.Clients
 import core._
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
@@ -82,4 +83,9 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
     case h @ HdfsLocation(path)      => Hdfs.delete(new Path(path)).run(configuration)
   }
 
+}
+
+object LocationIO {
+  def default =
+    LocationIO(new Configuration, Clients.s3)
 }
