@@ -8,34 +8,31 @@ import com.ambiata.mundane.io._
  * on either HDFS, S3 or locally
  */
 sealed trait Location {
-  type SelfType <: Location
-
   /** show a string representing the location path */
-  def show: String
+  def render: String
 
   /** modify this  */
-  def map(f: DirPath => DirPath): SelfType
+  def map(f: DirPath => DirPath): Location
 
   /** extend this location with a file path */
-  def </>(other: FilePath): SelfType = map(_ </> other.toDirPath)
+  def </>(other: FilePath): Location = map(_ </> other.toDirPath)
 
   /** extend this location with a dir path */
-  def </>(other: DirPath):  SelfType = map(_ </> other)
+  def </>(other: DirPath):  Location = map(_ </> other)
 
   /** extend this location with a file name */
-  def </>(name: FileName):  SelfType = map(_ </> name)
+  def </>(name: FileName):  Location = map(_ </> name)
 
 }
 
 case class HdfsLocation(path: String) extends Location {
-  type SelfType = HdfsLocation
 
-  def show: String = path
+  def render: String = path
 
   def dirPath  = DirPath.unsafe(path)
   def filePath = FilePath.unsafe(path)
 
-  def map(f: DirPath => DirPath): SelfType =
+  def map(f: DirPath => DirPath): Location =
     copy(path = f(dirPath).path)
 }
 
@@ -45,23 +42,20 @@ object HdfsLocation {
 }
 
 case class S3Location(bucket: String, key: String) extends Location {
-  type SelfType = S3Location
+  def render: String = bucket+"/"+key
 
-  def show: String = bucket+"/"+key
-
-  def map(f: DirPath => DirPath): SelfType =
+  def map(f: DirPath => DirPath): Location =
     copy(key = f(DirPath.unsafe(key)).path)
 }
 
 case class LocalLocation(path: String) extends Location {
-  type SelfType = LocalLocation
 
   def dirPath  = DirPath.unsafe(path)
   def filePath = FilePath.unsafe(path)
 
-  def show: String = path
+  def render: String = path
 
-  def map(f: DirPath => DirPath): SelfType =
+  def map(f: DirPath => DirPath): Location =
     copy(path = f(dirPath).path)
 
 }
