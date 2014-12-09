@@ -3,11 +3,37 @@ package com.ambiata.notion.core
 import scalaz._, Scalaz._
 import com.ambiata.mundane.io._
 
-sealed trait Location
+/**
+ * A location represents a "path" on a file system
+ * on either HDFS, S3 or locally
+ */
+sealed trait Location {
+  /** show a string representing the location path */
+  def render: String
+
+  /** modify this  */
+  def map(f: DirPath => DirPath): Location
+
+  /** extend this location with a file path */
+  def </>(other: FilePath): Location = map(_ </> other.toDirPath)
+
+  /** extend this location with a dir path */
+  def </>(other: DirPath):  Location = map(_ </> other)
+
+  /** extend this location with a file name */
+  def </>(name: FileName):  Location = map(_ </> name)
+
+}
 
 case class HdfsLocation(path: String) extends Location {
+
+  def render: String = path
+
   def dirPath  = DirPath.unsafe(path)
   def filePath = FilePath.unsafe(path)
+
+  def map(f: DirPath => DirPath): Location =
+    copy(path = f(dirPath).path)
 }
 
 object HdfsLocation {
@@ -15,11 +41,23 @@ object HdfsLocation {
     HdfsLocation(dir.path)
 }
 
-case class S3Location(bucket: String, key: String) extends Location
+case class S3Location(bucket: String, key: String) extends Location {
+  def render: String = bucket+"/"+key
+
+  def map(f: DirPath => DirPath): Location =
+    copy(key = f(DirPath.unsafe(key)).path)
+}
 
 case class LocalLocation(path: String) extends Location {
+
   def dirPath  = DirPath.unsafe(path)
   def filePath = FilePath.unsafe(path)
+
+  def render: String = path
+
+  def map(f: DirPath => DirPath): Location =
+    copy(path = f(dirPath).path)
+
 }
 
 object LocalLocation {
