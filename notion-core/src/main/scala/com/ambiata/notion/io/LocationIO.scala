@@ -13,7 +13,7 @@ import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 
-import scalaz._, Scalaz._, effect.IO
+import scalaz._, Scalaz._, effect.IO, effect.Effect._
 
 /**
  * This module provides file system-like functions on HDFS, S3 and locally
@@ -67,6 +67,29 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
           Hdfs.readLines(new Path(path)).map(_.toList)
       }.run(configuration)
   }
+
+  def readUnsafe(location: Location)(f: java.io.InputStream => ResultTIO[Unit]): ResultTIO[Unit] =
+    location match {
+      case l @ LocalLocation(_) =>
+        ResultT.using(l.filePath.toInputStream)(f)
+      case S3Location(bucket, key) =>
+        ResultT.using(S3Address(bucket, key).getObject.map(_.getObjectContent).executeT(s3Client))(f)
+      case HdfsLocation(path) =>
+        Hdfs.readWith(new Path(path), f).run(configuration)
+    }
+
+  def streamLinesUTF8[A](location: Location, empty: => A)(f: (String, A) => A): ResultTIO[A] =
+    ResultT.io(empty).flatMap { s =>
+      var state = s
+      readUnsafe(location) { in => ResultT.io {
+        val reader = new java.io.BufferedReader(new java.io.InputStreamReader(in, "UTF-8"))
+        var line = reader.readLine
+        while (line != null) {
+          state = f(line, state)
+          line = reader.readLine
+        }
+      }}.as(state)
+    }
 
   def writeUtf8Lines(location: Location, lines: List[String]): ResultTIO[Unit] =
     writeUtf8(location, Lists.prepareForFile(lines))

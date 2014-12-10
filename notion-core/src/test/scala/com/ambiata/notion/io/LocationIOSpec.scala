@@ -26,6 +26,7 @@ class LocationIOSpec extends Specification with ForeachTemporaryType with ScalaC
    deleteAll               $deleteAll
    delete                  $delete
    read / write lines      $readWriteLines
+   stream lines            $streamLines
    list                    $list
    exists                  $exists
 
@@ -86,6 +87,16 @@ class LocationIOSpec extends Specification with ForeachTemporaryType with ScalaC
       withLocationIO { locationIO =>
         locationIO.writeUtf8Lines(location, linesWithoutSpaces) >>
         locationIO.readLines(location)
+      }
+    } must beOkValue(linesWithoutSpaces)
+  }
+
+  def streamLines = prop { (temporaryType: TemporaryType, lines: List[String]) =>
+    val linesWithoutSpaces = lines.map(_.replaceAll("\\s", ""))
+    withLocationFile(temporaryType) { location =>
+      withLocationIO { locationIO =>
+        locationIO.writeUtf8Lines(location, linesWithoutSpaces) >>
+        locationIO.streamLinesUTF8(location, List[String]())(_ :: _).map(_.reverse)
       }
     } must beOkValue(linesWithoutSpaces)
   }
