@@ -18,7 +18,7 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
  ================================================
 
  calculate upload mappings                $upload
- calculate download mappings              $download
+ calculate download mappings              $download ${tag("aws")}
 
 """
 
