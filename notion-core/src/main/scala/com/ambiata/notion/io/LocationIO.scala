@@ -21,7 +21,7 @@ import scalaz._, Scalaz._, effect.IO, effect.Effect._
 case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS3Client) {
 
   /** @return the (recursive) list of all the locations contained in `location` */
-  def list(location: Location): ResultTIO[List[Location]] = location match {
+  def list(location: Location): RIO[List[Location]] = location match {
     case l @ LocalLocation(path) =>
       Directories.list(l.dirPath).map(_.map(f => LocalLocation(f.path)))
 
@@ -33,7 +33,7 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
   }
 
   /** @return true if the location exists */
-  def exists(location: Location): ResultTIO[Boolean] = location match {
+  def exists(location: Location): RIO[Boolean] = location match {
     case l @ LocalLocation(path)            =>
       Files.exists(FilePath.unsafe(path)).flatMap(e => if (e) ResultT.ok[IO, Boolean](e) else Directories.exists(l.dirPath))
 
@@ -42,14 +42,14 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
   }
 
   /** @return true if the location can contain other locations */
-  def isDirectory(location: Location): ResultTIO[Boolean] = location match {
+  def isDirectory(location: Location): RIO[Boolean] = location match {
     case l @ LocalLocation(path)     => ResultT.safe[IO, Boolean](new File(path).isDirectory)
     case s @ S3Location(bucket, key) => S3Pattern(bucket, key + "/").determine.map(_.exists(_.isRight)).executeT(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.isDirectory(new Path(path)).run(configuration)
   }
 
   /** @return the lines of the file present at `location` if there is one */
-  def readLines(location: Location): ResultTIO[List[String]] = location match {
+  def readLines(location: Location): RIO[List[String]] = location match {
     case l @ LocalLocation(path)     => Files.readLines(l.filePath).map(_.toList)
     case s @ S3Location(bucket, key) =>
       S3Pattern(bucket, key).determine.flatMap { prefixOrAddress =>
@@ -68,7 +68,7 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
       }.run(configuration)
   }
 
-  def readUnsafe(location: Location)(f: java.io.InputStream => ResultTIO[Unit]): ResultTIO[Unit] =
+  def readUnsafe(location: Location)(f: java.io.InputStream => RIO[Unit]): RIO[Unit] =
     location match {
       case l @ LocalLocation(_) =>
         ResultT.using(l.filePath.toInputStream)(f)
@@ -78,7 +78,7 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
         Hdfs.readWith(new Path(path), f).run(configuration)
     }
 
-  def streamLinesUTF8[A](location: Location, empty: => A)(f: (String, A) => A): ResultTIO[A] =
+  def streamLinesUTF8[A](location: Location, empty: => A)(f: (String, A) => A): RIO[A] =
     ResultT.io(empty).flatMap { s =>
       var state = s
       readUnsafe(location) { in => ResultT.io {
@@ -91,22 +91,22 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
       }}.as(state)
     }
 
-  def writeUtf8Lines(location: Location, lines: List[String]): ResultTIO[Unit] =
+  def writeUtf8Lines(location: Location, lines: List[String]): RIO[Unit] =
     writeUtf8(location, Lists.prepareForFile(lines))
 
-  def writeUtf8(location: Location, string: String): ResultTIO[Unit] = location match {
+  def writeUtf8(location: Location, string: String): RIO[Unit] = location match {
     case l @ LocalLocation(path)     => Files.write(l.filePath, string)
     case s @ S3Location(bucket, key) => S3Address(bucket, key).put(string).executeT(s3Client).void
     case h @ HdfsLocation(path)      => Hdfs.writeWith(new Path(path), out => Streams.write(out, string)).run(configuration)
   }
 
-  def deleteAll(location: Location): ResultTIO[Unit] = location match {
+  def deleteAll(location: Location): RIO[Unit] = location match {
     case l @ LocalLocation(path)     => Directories.delete(l.dirPath).void
     case s @ S3Location(bucket, key) => S3Prefix(bucket, key).delete.executeT(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.deleteAll(new Path(path)).run(configuration)
   }
 
-  def delete(location: Location): ResultTIO[Unit] = location match {
+  def delete(location: Location): RIO[Unit] = location match {
     case l @ LocalLocation(path)     => Files.delete(l.filePath)
     case s @ S3Location(bucket, key) => S3Address(bucket, key).delete.executeT(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.delete(new Path(path)).run(configuration)

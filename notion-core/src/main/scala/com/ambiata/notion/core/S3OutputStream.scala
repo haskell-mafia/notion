@@ -11,7 +11,7 @@ import java.io._
 import scalaz._, Scalaz._, effect.IO
 
 object S3OutputStream {
-  def stream(address: S3Address, client: AmazonS3Client): ResultTIO[OutputStream] = {
+  def stream(address: S3Address, client: AmazonS3Client): RIO[OutputStream] = {
     val tmpPath = uniqueFilePath
     ResultT.safe[IO, OutputStream]({
       val f = new BufferedOutputStream(new FileOutputStream(tmpPath.path))

@@ -10,7 +10,7 @@ import org.apache.hadoop.fs.Path
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.io.TemporaryFilePath._
 import com.ambiata.mundane.io.TemporaryDirPath._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import MemoryConversions._
 
 import org.specs2._
@@ -28,7 +28,7 @@ Download files from S3 to HDFS
 
 """
 
-  def withConf[A](f: Configuration => ResultTIO[A]): ResultTIO[A] = TemporaryDirPath.withDirPath { dir =>
+  def withConf[A](f: Configuration => RIO[A]): RIO[A] = TemporaryDirPath.withDirPath { dir =>
     val c = new Configuration()
     c.set("hadoop.tmp.dir", dir.path)
     f(c)

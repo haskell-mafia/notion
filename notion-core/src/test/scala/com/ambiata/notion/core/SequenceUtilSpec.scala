@@ -3,7 +3,7 @@ package com.ambiata.notion.core
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.io.TemporaryFilePath._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core._
 import com.ambiata.saws.s3.TemporaryS3._
@@ -41,7 +41,7 @@ class SequenceUtilSpec extends Specification with ScalaCheck { def is = s2"""
       runTest(HdfsLocation(f.path), list, Hdfs.exists(new Path(f.path)).run(conf))
     }) must beOkValue(true -> list) })
 
-  def runTest(loc: Location, l: List[String], exists: ResultTIO[Boolean]): ResultTIO[(Boolean, List[String])]  = for {
+  def runTest(loc: Location, l: List[String], exists: RIO[Boolean]): RIO[(Boolean, List[String])]  = for {
     _ <- SequenceUtil.writeBytes(loc, conf, client, None){
       writer => ResultT.safe(l.foreach(s => writer(s.getBytes("UTF-8"))))
     }

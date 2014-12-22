@@ -2,7 +2,7 @@ package com.ambiata.notion.distcopy
 
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.io.TemporaryFilePath._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.S3Address
