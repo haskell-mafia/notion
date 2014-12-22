@@ -28,7 +28,7 @@ object DistCopyJob {
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
 
-  def run(mappings: Mappings, conf: DistCopyConfiguration): ResultTIO[Unit] = for {
+  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[Unit] = for {
     job <- ResultT.safe[IO, Job](Job.getInstance(conf.hdfs))
     ctx <- ResultT.safe[IO, MrContext](MrContext.newContext("notion-distcopy-sync", job))
     _   <- ResultT.safe[IO, Unit]({

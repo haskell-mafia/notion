@@ -12,7 +12,7 @@ import com.ambiata.saws.core.Clients
 import com.ambiata.notion.core.TemporaryType._
 import com.ambiata.poacher.hdfs.TemporaryConfiguration._
 import com.ambiata.mundane.io._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import scalaz._, Scalaz._
 import TemporaryLocations._
 import Arbitraries._
@@ -124,7 +124,7 @@ class LocationIOSpec extends Specification with ForeachTemporaryType with ScalaC
     }
   }
 
-  def withLocationIO[A](f: LocationIO => ResultTIO[A]): ResultTIO[A] =
+  def withLocationIO[A](f: LocationIO => RIO[A]): RIO[A] =
     withConf(conf => f(LocationIO(conf, Clients.s3)))
 }
 

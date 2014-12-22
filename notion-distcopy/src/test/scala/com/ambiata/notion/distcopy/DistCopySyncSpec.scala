@@ -4,7 +4,7 @@ import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io.TemporaryFilePath._
 import com.ambiata.mundane.io._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.notion.distcopy.Arbitraries._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.core.Clients
@@ -25,7 +25,7 @@ Syncing files between S3 and HDFS
 
 """
 
-  def withConf[A](f: Configuration => ResultTIO[A]): ResultTIO[A] = TemporaryDirPath.withDirPath { dir =>
+  def withConf[A](f: Configuration => RIO[A]): RIO[A] = TemporaryDirPath.withDirPath { dir =>
     val c = new Configuration()
     c.set("hadoop.tmp.dir", dir.path)
     f(c)

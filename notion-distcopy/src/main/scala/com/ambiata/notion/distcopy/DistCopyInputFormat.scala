@@ -2,7 +2,7 @@ package com.ambiata.notion.distcopy
 
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
-import com.ambiata.mundane.control.{ResultT, ResultTIO}
+import com.ambiata.mundane.control.{ResultT, RIO}
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.poacher.mr.{DistCache, MrContext}
 import org.apache.hadoop.conf.Configuration
@@ -66,7 +66,7 @@ class DistCopyInputFormat extends InputFormat[NullWritable, Mapping] {
 object DistCopyInputFormat {
   val MappingKey = DistCache.Key("notion.dist-copy.sync.mappings")
 
-  def setMappings(j: Job, ctx: MrContext, client: AmazonS3Client, mappings: Mappings, splitNumber: Int): ResultTIO[Unit] = for {
+  def setMappings(j: Job, ctx: MrContext, client: AmazonS3Client, mappings: Mappings, splitNumber: Int): RIO[Unit] = for {
     w <- calc(mappings, splitNumber, client, j.getConfiguration)
     _ <- ResultT.safe[IO, Unit] {
       ctx.distCache.push(j, MappingKey, mappings.asJson.nospaces.getBytes("UTF-8"))
@@ -76,15 +76,15 @@ object DistCopyInputFormat {
     }
   } yield ()
 
-  def size(z: (Mapping, Int), client: AmazonS3Client, conf: Configuration): ResultTIO[Long] = z._1 match {
+  def size(z: (Mapping, Int), client: AmazonS3Client, conf: Configuration): RIO[Long] = z._1 match {
     case DownloadMapping(from, _) => from.size.executeT(client)
     case UploadMapping(from, _)   => Hdfs.size(from).run(conf).map(_.value)
   }
 
-  def calc(mappings: Mappings, mappers: Int, client: AmazonS3Client, conf: Configuration): ResultTIO[Workloads] = for {
-    s <- mappings.mappings.zipWithIndex.traverse[ResultTIO, (Mapping, Int, Long)]({
+  def calc(mappings: Mappings, mappers: Int, client: AmazonS3Client, conf: Configuration): RIO[Workloads] = for {
+    s <- mappings.mappings.zipWithIndex.traverse[RIO, (Mapping, Int, Long)]({
       case (a, b) =>
-        ResultT.when(b % 1000 == 0, println(s"File size calculated: $b of ${mappings.mappings.size}").pure[ResultTIO]) >>
+        ResultT.when(b % 1000 == 0, println(s"File size calculated: $b of ${mappings.mappings.size}").pure[RIO]) >>
         size((a, b), client, conf).map(lon => (a, b, lon))
     })
     _ = println(s"File size calculated: ${mappings.mappings.size} of ${mappings.mappings.size}")

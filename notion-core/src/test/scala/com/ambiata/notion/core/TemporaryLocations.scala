@@ -22,12 +22,12 @@ import scalaz.{Store =>_,_}, Scalaz._
 trait TemporaryLocations {
 
   /** run some code with a location representing a directory */
-  def withLocationDir[A](temporaryType: TemporaryType)(f: Location => ResultTIO[A]): ResultTIO[A] = {
+  def withLocationDir[A](temporaryType: TemporaryType)(f: Location => RIO[A]): RIO[A] = {
     runWithLocationDir(createLocation(temporaryType))(f)
   }
 
   /** run some code with a location representing a file */
-  def withLocationFile[A](temporaryType: TemporaryType)(f: Location => ResultTIO[A]): ResultTIO[A] =
+  def withLocationFile[A](temporaryType: TemporaryType)(f: Location => RIO[A]): RIO[A] =
     runWithLocationFile(createLocation(temporaryType))(f)
 
   /** create a temporary location for a given type of location: posix, hdfs, s3 */
@@ -41,24 +41,24 @@ trait TemporaryLocations {
   }
 
   /** run a function with temporary file which will be removed after usage */
-  def runWithLocationFile[A](location: Location)(f: Location => ResultTIO[A]): ResultTIO[A] =
-    ResultT.using(TemporaryLocationFile(location).pure[ResultTIO])(tmp => f(tmp.location))
+  def runWithLocationFile[A](location: Location)(f: Location => RIO[A]): RIO[A] =
+    ResultT.using(TemporaryLocationFile(location).pure[RIO])(tmp => f(tmp.location))
 
   /** run a function with temporary directory which will be removed after usage */
-  def runWithLocationDir[A](location: Location)(f: Location => ResultTIO[A]): ResultTIO[A] =
-    ResultT.using(TemporaryLocationDir(location).pure[ResultTIO])(tmp => f(tmp.location))
+  def runWithLocationDir[A](location: Location)(f: Location => RIO[A]): RIO[A] =
+    ResultT.using(TemporaryLocationDir(location).pure[RIO])(tmp => f(tmp.location))
 
   def createLocalLocation: LocalLocation     = LocalLocation(uniqueDirPath.path)
   def createUniqueS3Location: S3Location     = S3Location(testBucket, uniqueDirPath.asRelative.path)
   def createUniqueHdfsLocation: HdfsLocation = HdfsLocation(uniqueDirPath.path)
 
-  def createLocationFile(location: Location): ResultTIO[Unit] =
+  def createLocationFile(location: Location): RIO[Unit] =
     saveLocationFile(location, "")
 
-  def saveLocationFile(location: Location, content: String): ResultTIO[Unit] =
+  def saveLocationFile(location: Location, content: String): RIO[Unit] =
     withConf(configuration => LocationIO(configuration, Clients.s3).writeUtf8(location, content))
 
-  def createLocationDir(location: Location): ResultTIO[Unit] = location match {
+  def createLocationDir(location: Location): RIO[Unit] = location match {
     case l @ LocalLocation(path)     => Directories.mkdirs(DirPath.unsafe(path))
     case s @ S3Location(bucket, key) => (S3Address(bucket, key) / ".location").put("").executeT(Clients.s3).void
     case h @ HdfsLocation(p)         => withConf(configuration => PoacherHdfs.mkdir(new Path(p)).void.run(configuration))
@@ -69,7 +69,7 @@ object TemporaryLocations extends TemporaryLocations
 
 
 case class TemporaryLocationDir(location: Location) {
-  def clean: ResultTIO[Unit] =
+  def clean: RIO[Unit] =
     withConf(configuration => LocationIO(configuration, Clients.s3).deleteAll(location))
 }
 
@@ -80,7 +80,7 @@ object TemporaryLocationDir {
 }
 
 case class TemporaryLocationFile(location: Location) {
-  def clean: ResultTIO[Unit] =
+  def clean: RIO[Unit] =
     withConf(configuration => LocationIO(configuration, Clients.s3).delete(location))
 }
 
@@ -89,7 +89,3 @@ object TemporaryLocationFile {
     def close(temp: TemporaryLocationFile) = temp.clean.run.void // Squelch errors
   }
 }
-
-
-
-

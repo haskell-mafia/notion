@@ -17,7 +17,7 @@ import java.util.UUID
 import scalaz._, effect._, effect.Effect._
 
 object SequenceUtil {
-  def writeBytes(location: Location, conf: Configuration, client: AmazonS3Client, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => ResultTIO[Unit]): ResultTIO[Unit] ={
+  def writeBytes(location: Location, conf: Configuration, client: AmazonS3Client, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): RIO[Unit] ={
     val out = (location match {
       case HdfsLocation(p) =>
         ResultT.safe[IO, OutputStream](FileSystem.get(conf).create(new Path(p)))
@@ -29,12 +29,12 @@ object SequenceUtil {
     writeBytesX(out, conf, codec)(f)
   }
 
-  def writeHdfsBytes(location: HdfsLocation, conf: Configuration, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => ResultTIO[Unit]): Hdfs[Unit] = {
+  def writeHdfsBytes(location: HdfsLocation, conf: Configuration, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): Hdfs[Unit] = {
     val out = ResultT.safe[IO, OutputStream](FileSystem.get(conf).create(new Path(location.path)))
-    Hdfs.fromResultTIO(writeBytesX(out, conf, codec)(f))
+    Hdfs.fromRIO(writeBytesX(out, conf, codec)(f))
   }
 
-  def writeBytesX(location: ResultTIO[OutputStream], conf: Configuration, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => ResultTIO[Unit]): ResultTIO[Unit] = for {
+  def writeBytesX(location: RIO[OutputStream], conf: Configuration, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): RIO[Unit] = for {
     out  <- location
     _    <- ResultT.using(ResultT.safe(new FSDataOutputStream(out, new FileSystem.Statistics("SequenceUtil")))) {
       out => {
@@ -52,7 +52,7 @@ object SequenceUtil {
     }
   } yield ()
 
-  def readThrift[A](location: Location, conf: Configuration, client: AmazonS3Client)(forRow: Array[Byte] => A): ResultTIO[List[A]] = for {
+  def readThrift[A](location: Location, conf: Configuration, client: AmazonS3Client)(forRow: Array[Byte] => A): RIO[List[A]] = for {
     in <- (location match {
       case HdfsLocation(p) =>
         ResultT.safe[IO, InputStream](FileSystem.get(conf).open(new Path(p)))
@@ -67,7 +67,7 @@ object SequenceUtil {
   /* This code is for testing purposes only.
      It does not have any tests around it at this stage, it is also unsafe
      and the performance is unknown                                          */
-  def readThriftX[A](location: InputStream, conf: Configuration)(forRow: Array[Byte] => A): ResultTIO[List[A]] = for {
+  def readThriftX[A](location: InputStream, conf: Configuration)(forRow: Array[Byte] => A): RIO[List[A]] = for {
     r <- ResultT.using(ResultT.safe(new FSDataInputStream(location))) {
       in => {
         ResultT.using(ResultT.safe(new SequenceFile.Reader(conf, SequenceFile.Reader.stream(in)))) {

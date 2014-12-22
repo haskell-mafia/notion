@@ -4,7 +4,7 @@ import com.ambiata.mundane.control.{Result => _, _}
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing._
 import com.ambiata.mundane.testing.Keys._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.notion.core.Arbitraries._
 import org.specs2._
 import org.specs2.matcher.Parameters
@@ -54,13 +54,13 @@ abstract class StoreSpec extends Specification with ScalaCheck { def is = s2"""
 
   def storeType: TemporaryType
 
-  def run[A](keys: Keys)(f: (Store[ResultTIO], List[Key]) => ResultTIO[A]): ResultTIO[A] =
+  def run[A](keys: Keys)(f: (Store[RIO], List[Key]) => RIO[A]): RIO[A] =
     TemporaryStore.withStore(storeType)(store => for {
       _ <- keys.keys.traverseU(e => store.utf8.write((e.path +"/"+e.value).toKey, e.value.toString))
       r <- f(store, keys.keys.map(e => e.full.toKey))
     } yield r)
 
-  def runR[A](keys: Keys, alternateType: TemporaryType)(f: (Store[ResultTIO], Store[ResultTIO], List[Key]) => ResultTIO[A]): ResultTIO[A] =
+  def runR[A](keys: Keys, alternateType: TemporaryType)(f: (Store[RIO], Store[RIO], List[Key]) => RIO[A]): RIO[A] =
     TemporaryStore.withStore(storeType)(store => for {
       r <- TemporaryStore.withStore(alternateType)(alternate => for {
         _ <- keys.keys.traverseU(e => store.utf8.write((e.path +"/"+e.value).toKey, e.value.toString))

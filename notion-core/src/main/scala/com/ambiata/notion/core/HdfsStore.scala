@@ -17,14 +17,14 @@ import scalaz.effect.IO
 import scalaz.stream._
 import scalaz.{Store => _, _}
 
-case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO] with ReadOnlyStore[ResultTIO] {
-  def readOnly: ReadOnlyStore[ResultTIO] =
+case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with ReadOnlyStore[RIO] {
+  def readOnly: ReadOnlyStore[RIO] =
     this
 
   def basePath: Path =
     new Path(root.path)
 
-  def list(prefix: Key): ResultT[IO, List[Key]] =
+  def list(prefix: Key): RIO[List[Key]] =
     hdfs { Hdfs.filesystem.flatMap { fs =>
       Hdfs.globFilesRecursively(root </> keyToDirPath(prefix)).map { paths =>
         paths.map { path =>
@@ -33,63 +33,63 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO
       }
     }}
 
-  def listHeads(prefix: Key): ResultT[IO, List[Key]] =
+  def listHeads(prefix: Key): RIO[List[Key]] =
     hdfs { Hdfs.filesystem.flatMap { fs =>
       Hdfs.globPaths(root </> keyToDirPath(prefix)).map { paths =>
         paths.map(path => Key.unsafe(path.getName))
       }
     }}
 
-  def filter(prefix: Key, predicate: Key => Boolean): ResultT[IO, List[Key]] =
+  def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     list(prefix).map(_.filter(predicate))
 
-  def find(prefix: Key, predicate: Key => Boolean): ResultT[IO, Option[Key]] =
+  def find(prefix: Key, predicate: Key => Boolean): RIO[Option[Key]] =
     list(prefix).map(_.find(predicate))
 
-  def exists(key: Key): ResultT[IO, Boolean] =
+  def exists(key: Key): RIO[Boolean] =
     hdfs { Hdfs.exists(root </> keyToFilePath(key)) }
 
-  def existsPrefix(prefix: Key): ResultT[IO, Boolean] =
+  def existsPrefix(prefix: Key): RIO[Boolean] =
     hdfs { Hdfs.exists(root </> keyToFilePath(prefix)) }
 
-  def delete(key: Key): ResultT[IO, Unit] =
+  def delete(key: Key): RIO[Unit] =
     hdfs { Hdfs.delete(root </> keyToFilePath(key)) }
 
-  def deleteAll(prefix: Key): ResultT[IO, Unit] =
+  def deleteAll(prefix: Key): RIO[Unit] =
     hdfs { Hdfs.deleteAll(root </> keyToDirPath(prefix)) }
 
-  def move(in: Key, out: Key): ResultT[IO, Unit] =
+  def move(in: Key, out: Key): RIO[Unit] =
     copy(in, out) >> delete(in)
 
-  def copy(in: Key, out: Key): ResultT[IO, Unit] =
+  def copy(in: Key, out: Key): RIO[Unit] =
     hdfs { Hdfs.cp(root </> keyToFilePath(in), root </> keyToFilePath(out), false) }
 
-  def mirror(in: Key, out: Key): ResultT[IO, Unit] = for {
+  def mirror(in: Key, out: Key): RIO[Unit] = for {
     paths <- list(in)
     _     <- paths.traverseU(source => copy(source, out / source))
   } yield ()
 
-  def moveTo(store: Store[ResultTIO], src: Key, dest: Key): ResultT[IO, Unit] =
+  def moveTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     copyTo(store, src, dest) >> delete(src)
 
-  def copyTo(store: Store[ResultTIO], src: Key, dest: Key): ResultT[IO, Unit] =
+  def copyTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     unsafe.withInputStream(src) { in =>
       store.unsafe.withOutputStream(dest) { out =>
         Streams.pipe(in, out) }}
 
-  def mirrorTo(store: Store[ResultTIO], in: Key, out: Key): ResultT[IO, Unit] = for {
+  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] = for {
     keys <- list(in)
     _    <- keys.traverseU(source => copyTo(store, source, out / source))
   } yield ()
 
-  def checksum(key: Key, algorithm: ChecksumAlgorithm): ResultT[IO, Checksum] =
+  def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
     withInputStreamValue[Checksum](key)(in => Checksum.stream(in, algorithm))
 
-  val bytes: StoreBytes[ResultTIO] = new StoreBytes[ResultTIO] {
-    def read(key: Key): ResultT[IO, ByteVector] =
+  val bytes: StoreBytes[RIO] = new StoreBytes[RIO] {
+    def read(key: Key): RIO[ByteVector] =
       withInputStreamValue[Array[Byte]](key)(Streams.readBytes(_, 4 * 1024 * 1024)).map(ByteVector.view)
 
-    def write(key: Key, data: ByteVector): ResultT[IO, Unit] =
+    def write(key: Key, data: ByteVector): RIO[Unit] =
       unsafe.withOutputStream(key)(Streams.writeBytes(_, data.toArray))
 
     def source(key: Key): Process[Task, ByteVector] =
@@ -101,19 +101,19 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO
           in => Task.now((bytes: ByteVector) => Task.delay(out.write(bytes.toArray)))).toTask)
   }
 
-  val strings: StoreStrings[ResultTIO] = new StoreStrings[ResultTIO] {
-    def read(key: Key, codec: Codec): ResultT[IO, String] =
+  val strings: StoreStrings[RIO] = new StoreStrings[RIO] {
+    def read(key: Key, codec: Codec): RIO[String] =
       bytes.read(key).map(b => new String(b.toArray, codec.name))
 
-    def write(key: Key, data: String, codec: Codec): ResultT[IO, Unit] =
+    def write(key: Key, data: String, codec: Codec): RIO[Unit] =
       bytes.write(key, ByteVector.view(data.getBytes(codec.name)))
   }
 
-  val utf8: StoreUtf8[ResultTIO] = new StoreUtf8[ResultTIO] {
-    def read(key: Key): ResultT[IO, String] =
+  val utf8: StoreUtf8[RIO] = new StoreUtf8[RIO] {
+    def read(key: Key): RIO[String] =
       strings.read(key, Codec.UTF8)
 
-    def write(key: Key, data: String): ResultT[IO, Unit] =
+    def write(key: Key, data: String): RIO[Unit] =
       strings.write(key, data, Codec.UTF8)
 
     def source(key: Key): Process[Task, String] =
@@ -123,11 +123,11 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO
       bytes.sink(key).map(_.contramap(s => ByteVector.view(s.getBytes("UTF-8"))))
   }
 
-  val lines: StoreLines[ResultTIO] = new StoreLines[ResultTIO] {
-    def read(key: Key, codec: Codec): ResultT[IO, List[String]] =
+  val lines: StoreLines[RIO] = new StoreLines[RIO] {
+    def read(key: Key, codec: Codec): RIO[List[String]] =
       strings.read(key, codec).map(_.lines.toList)
 
-    def write(key: Key, data: List[String], codec: Codec): ResultT[IO, Unit] =
+    def write(key: Key, data: List[String], codec: Codec): RIO[Unit] =
       strings.write(key, Lists.prepareForFile(data), codec)
 
     def source(key: Key, codec: Codec): Process[Task, String] =
@@ -137,11 +137,11 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO
       bytes.sink(key).map(_.contramap(s => ByteVector.view(s"$s\n".getBytes(codec.name))))
   }
 
-  val linesUtf8: StoreLinesUtf8[ResultTIO] = new StoreLinesUtf8[ResultTIO] {
-    def read(key: Key): ResultT[IO, List[String]] =
+  val linesUtf8: StoreLinesUtf8[RIO] = new StoreLinesUtf8[RIO] {
+    def read(key: Key): RIO[List[String]] =
       lines.read(key, Codec.UTF8)
 
-    def write(key: Key, data: List[String]): ResultT[IO, Unit] =
+    def write(key: Key, data: List[String]): RIO[Unit] =
       lines.write(key, data, Codec.UTF8)
 
     def source(key: Key): Process[Task, String] =
@@ -151,18 +151,18 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[ResultTIO
       lines.sink(key, Codec.UTF8)
   }
 
-  def withInputStreamValue[A](key: Key)(f: InputStream => ResultT[IO, A]): ResultT[IO, A] =
+  def withInputStreamValue[A](key: Key)(f: InputStream => RIO[A]): RIO[A] =
     hdfs { Hdfs.readWith(root </> keyToFilePath(key), f) }
 
-  val unsafe: StoreUnsafe[ResultTIO] = new StoreUnsafe[ResultTIO] {
-    def withInputStream(key: Key)(f: InputStream => ResultT[IO, Unit]): ResultT[IO, Unit] =
+  val unsafe: StoreUnsafe[RIO] = new StoreUnsafe[RIO] {
+    def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
       withInputStreamValue[Unit](key)(f)
 
-    def withOutputStream(key: Key)(f: OutputStream => ResultT[IO, Unit]): ResultT[IO, Unit] =
+    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
       hdfs { Hdfs.writeWith(root </> keyToFilePath(key), f) }
   }
 
-  def hdfs[A](thunk: => Hdfs[A]): ResultT[IO, A] =
+  def hdfs[A](thunk: => Hdfs[A]): RIO[A] =
     thunk.run(conf)
 
   private implicit def filePathToPath(f: FilePath): Path = new Path(f.path)

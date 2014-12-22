@@ -3,7 +3,7 @@ package com.ambiata.notion.core
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.io.Temporary._
 import com.ambiata.mundane.control._
-import com.ambiata.mundane.testing.ResultTIOMatcher._
+import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.notion.core.TemporaryStore._
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3.S3Prefix
@@ -32,7 +32,7 @@ class TemporaryStoreSpec extends Specification { def is = s2"""
   def localStore =
     withStore(PosixStore(uniqueDirPath))
 
-  def withStore(store: Store[ResultTIO]): MatchResult[ResultTIO[(Boolean, Boolean)]] =
+  def withStore(store: Store[RIO]): MatchResult[RIO[(Boolean, Boolean)]] =
     (for {
       x <- TemporaryStore.runWithStore(store)(tmpStore => for {
         _   <- tmpStore.utf8.write(Key.unsafe("test"), "")
@@ -41,7 +41,7 @@ class TemporaryStoreSpec extends Specification { def is = s2"""
       y <- store.exists(Key.unsafe("test"))
     } yield (x,y)) must beOkValue((true,false))
 
-  def runWithStore[A](store: Store[ResultTIO])(f: Store[ResultTIO] => ResultTIO[A]): ResultTIO[A] =
-    ResultT.using(TemporaryStore(store).pure[ResultTIO])(tmp => f(tmp.store))
+  def runWithStore[A](store: Store[RIO])(f: Store[RIO] => RIO[A]): RIO[A] =
+    ResultT.using(TemporaryStore(store).pure[RIO])(tmp => f(tmp.store))
 
 }

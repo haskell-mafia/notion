@@ -13,8 +13,8 @@ import org.apache.hadoop.conf.Configuration
 import scalaz._, Scalaz._, effect._
 import scalaz.{Store => _}
 
-case class TemporaryStore(store: Store[ResultTIO]) {
-  def clean: ResultT[IO, Unit] = for {
+case class TemporaryStore(store: Store[RIO]) {
+  def clean: RIO[Unit] = for {
     _ <- store.deleteAll(Key.Root)
     _ <- store match {
       case S3Store(_, _, s) =>
@@ -30,7 +30,7 @@ object TemporaryStore {
     def close(temp: TemporaryStore) = temp.clean.run.void // Squelch errors
   }
 
-  def withStore[A](storeType: TemporaryType)(f: Store[ResultTIO] => ResultTIO[A]): ResultTIO[A] = {
+  def withStore[A](storeType: TemporaryType)(f: Store[RIO] => RIO[A]): RIO[A] = {
     val store = storeType match {
       case T.Posix =>
         PosixStore(uniqueDirPath)
@@ -42,8 +42,8 @@ object TemporaryStore {
     runWithStore(store)(f)
   }
 
-  def runWithStore[A](store: Store[ResultTIO])(f: Store[ResultTIO] => ResultTIO[A]): ResultTIO[A] =
-    ResultT.using(TemporaryStore(store).pure[ResultTIO])(tmp => f(tmp.store))
+  def runWithStore[A](store: Store[RIO])(f: Store[RIO] => RIO[A]): RIO[A] =
+    ResultT.using(TemporaryStore(store).pure[RIO])(tmp => f(tmp.store))
 
   def testBucket: String = Option(System.getenv("AWS_TEST_BUCKET")).getOrElse("ambiata-dev-view")
 

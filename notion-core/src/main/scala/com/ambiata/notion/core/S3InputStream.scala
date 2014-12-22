@@ -19,7 +19,7 @@ import scalaz._, Scalaz._, effect.IO
    See `263f814 # S3InputStream` for desired implementation
  */
 object S3InputStream {
-  def stream(address: S3Address, client: AmazonS3Client): ResultTIO[InputStream] = {
+  def stream(address: S3Address, client: AmazonS3Client): RIO[InputStream] = {
     val tmpPath = uniqueFilePath
     address.getFile(tmpPath).executeT(client) >>
       ResultT.safe[IO, InputStream](
