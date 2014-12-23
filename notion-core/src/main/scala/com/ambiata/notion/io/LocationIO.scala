@@ -48,6 +48,23 @@ case class LocationIO(configuration: Configuration, @transient s3Client: AmazonS
     case h @ HdfsLocation(path)      => Hdfs.isDirectory(new Path(path)).run(configuration)
   }
 
+  def readUTF8(location: Location): ResultTIO[String] = location match {
+    case l @ LocalLocation(path)     => Files.read(l.filePath)
+    case s @ S3Location(bucket, key) =>
+      S3Pattern(bucket, key).determine.flatMap { prefixOrAddress =>
+        val asAddress = prefixOrAddress.flatMap(_.swap.toOption)
+        asAddress.map(_.get).getOrElse(S3Action.fail(s"There is no file at ${location.render}"))
+      }.executeT(s3Client)
+
+    case h @ HdfsLocation(path)      =>
+      Hdfs.isDirectory(new Path(path)).flatMap { isDirectory =>
+        if (isDirectory)
+          Hdfs.fail[String](s"Invalid use of readUTF8 on directory '$path'")
+        else
+          Hdfs.readContentAsString(new Path(path))
+      }.run(configuration)
+  }
+
   /** @return the lines of the file present at `location` if there is one */
   def readLines(location: Location): RIO[List[String]] = location match {
     case l @ LocalLocation(path)     => Files.readLines(l.filePath).map(_.toList)
