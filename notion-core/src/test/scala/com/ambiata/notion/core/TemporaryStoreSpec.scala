@@ -42,6 +42,6 @@ class TemporaryStoreSpec extends Specification { def is = s2"""
     } yield (x,y)) must beOkValue((true,false))
 
   def runWithStore[A](store: Store[RIO])(f: Store[RIO] => RIO[A]): RIO[A] =
-    ResultT.using(TemporaryStore(store).pure[RIO])(tmp => f(tmp.store))
+    RIO.using(TemporaryStore(store).pure[RIO])(tmp => f(tmp.store))
 
 }

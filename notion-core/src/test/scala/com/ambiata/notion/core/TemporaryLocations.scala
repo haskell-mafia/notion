@@ -1,12 +1,10 @@
-package com.ambiata.notion
-package core
+package com.ambiata.notion.core
 
 import java.util.UUID
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
 import TemporaryType._
 import Temporary._
-import io.LocationIO
 import com.ambiata.poacher.hdfs.{Hdfs => PoacherHdfs}
 import com.ambiata.poacher.hdfs.TemporaryConfiguration._
 import com.ambiata.saws.core.Clients
@@ -42,11 +40,11 @@ trait TemporaryLocations {
 
   /** run a function with temporary file which will be removed after usage */
   def runWithLocationFile[A](location: Location)(f: Location => RIO[A]): RIO[A] =
-    ResultT.using(TemporaryLocationFile(location).pure[RIO])(tmp => f(tmp.location))
+    RIO.using(TemporaryLocationFile(location).pure[RIO])(tmp => f(tmp.location))
 
   /** run a function with temporary directory which will be removed after usage */
   def runWithLocationDir[A](location: Location)(f: Location => RIO[A]): RIO[A] =
-    ResultT.using(TemporaryLocationDir(location).pure[RIO])(tmp => f(tmp.location))
+    RIO.using(TemporaryLocationDir(location).pure[RIO])(tmp => f(tmp.location))
 
   def createLocalLocation: LocalLocation     = LocalLocation(uniqueDirPath.path)
   def createUniqueS3Location: S3Location     = S3Location(testBucket, uniqueDirPath.asRelative.path)
@@ -60,7 +58,7 @@ trait TemporaryLocations {
 
   def createLocationDir(location: Location): RIO[Unit] = location match {
     case l @ LocalLocation(path)     => Directories.mkdirs(DirPath.unsafe(path))
-    case s @ S3Location(bucket, key) => (S3Address(bucket, key) / ".location").put("").executeT(Clients.s3).void
+    case s @ S3Location(bucket, key) => (S3Address(bucket, key) / ".location").put("").execute(Clients.s3).void
     case h @ HdfsLocation(p)         => withConf(configuration => PoacherHdfs.mkdir(new Path(p)).void.run(configuration))
   }
 }

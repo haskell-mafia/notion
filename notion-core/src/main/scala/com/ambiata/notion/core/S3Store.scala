@@ -86,11 +86,11 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
 
   val unsafe: StoreUnsafeRead[RIO] = new StoreUnsafeRead[RIO] {
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
-      ResultT.using(run { (s3 | key.name).getObject.map(_.getObjectContent: InputStream) })(f)
+      RIO.using(run { (s3 | key.name).getObject.map(_.getObjectContent: InputStream) })(f)
   }
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
-    thunk.executeT(client)
+    thunk.execute(client)
 
 }
 
@@ -233,7 +233,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
   }
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
-    thunk.executeT(client)
+    thunk.execute(client)
 
   private def keyToFilePath(key: Key): FilePath =
     FilePath.unsafe(key.name)

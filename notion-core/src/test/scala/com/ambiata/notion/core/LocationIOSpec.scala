@@ -1,7 +1,5 @@
-package com.ambiata.notion
-package io
+package com.ambiata.notion.core
 
-import core._
 import org.specs2._
 import org.specs2.execute.AsResult
 import org.specs2.matcher._

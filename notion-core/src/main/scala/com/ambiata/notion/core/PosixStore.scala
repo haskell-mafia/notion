@@ -34,7 +34,7 @@ case class PosixStore(root: DirPath) extends Store[RIO] with ReadOnlyStore[RIO] 
     Files.exists(root </> toFilePath(key))
 
   def existsPrefix(key: Key): RIO[Boolean] =
-    exists(key).flatMap(e => if (e) ResultT.ok[IO, Boolean](e) else Directories.exists(root </> toDirPath(key)))
+    exists(key).flatMap(e => if (e) RIO.ok[Boolean](e) else Directories.exists(root </> toDirPath(key)))
 
   def delete(prefix: Key): RIO[Unit] =
     Files.delete(root </> toFilePath(prefix))
@@ -135,10 +135,10 @@ case class PosixStore(root: DirPath) extends Store[RIO] with ReadOnlyStore[RIO] 
 
   val unsafe: StoreUnsafe[RIO] = new StoreUnsafe[RIO] {
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
-      ResultT.using((root </> toFilePath(key)).toInputStream)(f)
+      RIO.using((root </> toFilePath(key)).toInputStream)(f)
 
     def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      Directories.mkdirs((root </> toFilePath(key)).dirname) >> ResultT.using((root </> toFilePath(key)).toOutputStream)(f)
+      Directories.mkdirs((root </> toFilePath(key)).dirname) >> RIO.using((root </> toFilePath(key)).toOutputStream)(f)
   }
 
   def toDirPath(key: Key): DirPath =

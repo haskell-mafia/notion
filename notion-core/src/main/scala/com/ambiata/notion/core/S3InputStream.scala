@@ -21,8 +21,8 @@ import scalaz._, Scalaz._, effect.IO
 object S3InputStream {
   def stream(address: S3Address, client: AmazonS3Client): RIO[InputStream] = {
     val tmpPath = uniqueFilePath
-    address.getFile(tmpPath).executeT(client) >>
-      ResultT.safe[IO, InputStream](
+    address.getFile(tmpPath).execute(client) >>
+      RIO.safe[InputStream](
         new LocalInputStream(tmpPath.path) {
           override def close(): Unit = {
             Files.delete(tmpPath).run.unsafePerformIO()

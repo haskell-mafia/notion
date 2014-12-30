@@ -14,15 +14,15 @@ import org.apache.hadoop.fs.{Hdfs => _, _}
 import java.io._
 import java.util.UUID
 
-import scalaz._, effect._, effect.Effect._
+import scalaz._, effect.Effect._
 
 object SequenceUtil {
   def writeBytes(location: Location, conf: Configuration, client: AmazonS3Client, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): RIO[Unit] ={
     val out = (location match {
       case HdfsLocation(p) =>
-        ResultT.safe[IO, OutputStream](FileSystem.get(conf).create(new Path(p)))
+        RIO.safe[OutputStream](FileSystem.get(conf).create(new Path(p)))
       case LocalLocation(p) =>
-        ResultT.safe[IO, OutputStream](new BufferedOutputStream(new FileOutputStream(p)))
+        RIO.safe[OutputStream](new BufferedOutputStream(new FileOutputStream(p)))
       case S3Location(bucket, key) =>
         S3OutputStream.stream(S3Address(bucket, key), client)
     })
@@ -30,13 +30,13 @@ object SequenceUtil {
   }
 
   def writeHdfsBytes(location: HdfsLocation, conf: Configuration, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): Hdfs[Unit] = {
-    val out = ResultT.safe[IO, OutputStream](FileSystem.get(conf).create(new Path(location.path)))
+    val out = RIO.safe[OutputStream](FileSystem.get(conf).create(new Path(location.path)))
     Hdfs.fromRIO(writeBytesX(out, conf, codec)(f))
   }
 
   def writeBytesX(location: RIO[OutputStream], conf: Configuration, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): RIO[Unit] = for {
     out  <- location
-    _    <- ResultT.using(ResultT.safe(new FSDataOutputStream(out, new FileSystem.Statistics("SequenceUtil")))) {
+    _    <- RIO.using(RIO.safe(new FSDataOutputStream(out, new FileSystem.Statistics("SequenceUtil")))) {
       out => {
         val opts = List(
           SequenceFile.Writer.stream(out),
@@ -45,7 +45,7 @@ object SequenceUtil {
         ) ++ codec.map {
           SequenceFile.Writer.compression(SequenceFile.CompressionType.BLOCK, _)
         }
-        ResultT.using(ResultT.safe(SequenceFile.createWriter(conf, opts: _*))) {
+        RIO.using(RIO.safe(SequenceFile.createWriter(conf, opts: _*))) {
           writer => f(bytes => writer.append(NullWritable.get, new BytesWritable(bytes)))
         }
       }
@@ -55,9 +55,9 @@ object SequenceUtil {
   def readThrift[A](location: Location, conf: Configuration, client: AmazonS3Client)(forRow: Array[Byte] => A): RIO[List[A]] = for {
     in <- (location match {
       case HdfsLocation(p) =>
-        ResultT.safe[IO, InputStream](FileSystem.get(conf).open(new Path(p)))
+        RIO.safe[InputStream](FileSystem.get(conf).open(new Path(p)))
       case LocalLocation(p) =>
-        ResultT.safe[IO, InputStream](new LocalInputStream(p))
+        RIO.safe[InputStream](new LocalInputStream(p))
       case S3Location(bucket, key) =>
         S3InputStream.stream(S3Address(bucket, key), client)
     })
@@ -68,10 +68,10 @@ object SequenceUtil {
      It does not have any tests around it at this stage, it is also unsafe
      and the performance is unknown                                          */
   def readThriftX[A](location: InputStream, conf: Configuration)(forRow: Array[Byte] => A): RIO[List[A]] = for {
-    r <- ResultT.using(ResultT.safe(new FSDataInputStream(location))) {
+    r <- RIO.using(RIO.safe(new FSDataInputStream(location))) {
       in => {
-        ResultT.using(ResultT.safe(new SequenceFile.Reader(conf, SequenceFile.Reader.stream(in)))) {
-          reader => ResultT.safe[IO, List[A]] {
+        RIO.using(RIO.safe(new SequenceFile.Reader(conf, SequenceFile.Reader.stream(in)))) {
+          reader => RIO.safe[List[A]] {
             val key = NullWritable.get
             val value = new BytesWritable()
             val buffer = scala.collection.mutable.ListBuffer[A]()

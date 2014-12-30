@@ -19,7 +19,8 @@ case class TemporaryStore(store: Store[RIO]) {
     _ <- store match {
       case S3Store(_, _, s) =>
         Directories.delete(s)
-      case _ => ResultT.unit[IO]
+      case _ =>
+        RIO.unit
       }
   } yield ()
 }
@@ -43,7 +44,7 @@ object TemporaryStore {
   }
 
   def runWithStore[A](store: Store[RIO])(f: Store[RIO] => RIO[A]): RIO[A] =
-    ResultT.using(TemporaryStore(store).pure[RIO])(tmp => f(tmp.store))
+    RIO.using(TemporaryStore(store).pure[RIO])(tmp => f(tmp.store))
 
   def testBucket: String = Option(System.getenv("AWS_TEST_BUCKET")).getOrElse("ambiata-dev-view")
 

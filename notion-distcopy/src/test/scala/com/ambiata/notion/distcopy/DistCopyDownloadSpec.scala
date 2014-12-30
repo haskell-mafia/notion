@@ -56,7 +56,7 @@ Download files from S3 to HDFS
         withFilePath( hdfs => {
           val path = new Path(hdfs.path)
           for {
-            _ <- s3.put(data).executeT(s3Client)
+            _ <- s3.put(data).execute(s3Client)
             _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(s3, path))), distCopyConf(conf, s3Client))
             e <- Hdfs.exists(path).run(conf)
             s <- Hdfs.readContentAsString(path).run(conf)
@@ -72,8 +72,8 @@ Download files from S3 to HDFS
               val pathOne = new Path(hdfsOne.path)
               val pathTwo = new Path(hdfsTwo.path)
               for {
-                _ <- one.put(data).executeT(s3Client)
-                _ <- two.put(data).executeT(s3Client)
+                _ <- one.put(data).execute(s3Client)
+                _ <- two.put(data).execute(s3Client)
                 _  <- DistCopyJob.run(Mappings(Vector(DownloadMapping(one, pathOne), DownloadMapping(two, pathTwo))), distCopyConf(conf, s3Client))
                 e1 <- Hdfs.exists(pathOne).run(conf)
                 e2 <- Hdfs.exists(pathTwo).run(conf)
@@ -93,9 +93,9 @@ Download files from S3 to HDFS
           val pathTwo = new Path((dir </> DirPath.unsafe("foos") </> FilePath.unsafe("bar")).path)
           val pathThree = new Path((dir </> DirPath.unsafe("foos") </> DirPath.unsafe("bars") </> FilePath.unsafe("foo")).path)
           for {
-            _  <- one.put(data).executeT(s3Client)
-            _  <- two.put(data).executeT(s3Client)
-            _  <- three.put(data).executeT(s3Client)
+            _  <- one.put(data).execute(s3Client)
+            _  <- two.put(data).execute(s3Client)
+            _  <- three.put(data).execute(s3Client)
             _  <- DistCopyJob.run(Mappings(Vector(DownloadMapping(one, pathOne), DownloadMapping(two, pathTwo), DownloadMapping(three, pathThree))), distCopyConf(conf, s3Client))
             e1 <- Hdfs.exists(pathOne).run(conf)
             e2 <- Hdfs.exists(pathTwo).run(conf)
@@ -121,8 +121,8 @@ Download files from S3 to HDFS
         withFilePath( hdfs => {
           val path = new Path(hdfs.path)
           for {
-            _ <- s3.put(data).executeT(s3Client)
-            _ <- Hdfs.writeWith(path, f => ResultT.safe(f.write(0))).run(conf)
+            _ <- s3.put(data).execute(s3Client)
+            _ <- Hdfs.writeWith(path, f => RIO.safe(f.write(0))).run(conf)
             _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(s3, path))), distCopyConf(conf, s3Client))
           } yield () })))
   } must beFail)

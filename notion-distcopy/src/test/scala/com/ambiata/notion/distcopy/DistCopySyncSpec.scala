@@ -46,13 +46,13 @@ Syncing files between S3 and HDFS
               val targetPath = new Path(targetFile.path)
               for {
                 _ <- Hdfs.writeWith(sourcePath, f => Streams.write(f, data.value, "UTF-8")).run(conf)
-                _ <- sourceAddress.put(data.value).executeT(s3Client)
+                _ <- sourceAddress.put(data.value).execute(s3Client)
                 _ <- DistCopyJob.run(
                   Mappings(Vector(
                       UploadMapping(sourcePath, targetAddress)
                     , DownloadMapping(sourceAddress, targetPath)
                   )), DistCopyConfiguration(conf, s3Client, 1, 1, 10.mb, 10.mb, 100.mb))
-                s <- targetAddress.get.executeT(s3Client)
+                s <- targetAddress.get.execute(s3Client)
                 h <- Hdfs.readContentAsString(targetPath).run(conf)
               } yield s -> h })))))
   } must beOkValue(data.value -> data.value))
