@@ -20,7 +20,7 @@ import org.apache.hadoop.mapreduce.{Mapper, Job, Counter}
 
 import DistCopyJob._
 
-import scalaz._, Scalaz._, effect._, effect.Effect._
+import scalaz._, Scalaz._, effect.Effect._
 
 object DistCopyJob {
   val PartSize = "distcopy.part.size"
@@ -29,9 +29,9 @@ object DistCopyJob {
   val RetryCount = "distcopy.retry.count"
 
   def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[Unit] = for {
-    job <- ResultT.safe[IO, Job](Job.getInstance(conf.hdfs))
-    ctx <- ResultT.safe[IO, MrContext](MrContext.newContext("notion-distcopy-sync", job))
-    _   <- ResultT.safe[IO, Unit]({
+    job <- RIO.safe[Job](Job.getInstance(conf.hdfs))
+    ctx <- RIO.safe[MrContext](MrContext.newContext("notion-distcopy-sync", job))
+    _   <- RIO.safe[Unit]({
       job.setJobName(ctx.id.value)
       job.setInputFormatClass(classOf[DistCopyInputFormat])
       job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
@@ -42,7 +42,7 @@ object DistCopyJob {
       job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
     })
     _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, conf.mappersNumber)
-    _   <- ResultT.safe[IO, Unit]({
+    _   <- RIO.safe[Unit]({
       job.setJarByClass(classOf[DistCopyMapper])
       job.setMapperClass(classOf[DistCopyMapper])
       job.setMapOutputKeyClass(classOf[NullWritable])
@@ -51,8 +51,8 @@ object DistCopyJob {
       job.setOutputFormatClass(classOf[TextOutputFormat[_, _]])
       FileOutputFormat.setOutputPath(job, tmpout)
     })
-    b   <- ResultT.safe[IO, Boolean] (job.waitForCompletion(true))
-    _   <- ResultT.unless[IO](b, ResultT.fail("notion dist-copy failed."))
+    b   <- RIO.safe[Boolean] (job.waitForCompletion(true))
+    _   <- RIO.unless(b, RIO.fail("notion dist-copy failed."))
   } yield ()
 }
 
@@ -106,13 +106,13 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   }
 
   override def map(key: NullWritable, value: Mapping, context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
-    val retryHandler = (n: Int, e: String \&/ Throwable) => {
+    val retryHandler: ((Int, String \&/ Throwable) => S3Action[Unit]) = (n: Int, e: String \&/ Throwable) => S3Action.safe({
       println(s"Retrying ...")
       println(Result.asString(e))
       retryCounter.increment(1)
       context.progress()
-      Vector()
-    }
+      ()
+    })
 
     val action: S3Action[Unit] = value match {
       case DownloadMapping(from, destination) => for {
@@ -136,8 +136,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           )
         }).retry(retryCount, retryHandler)
         _               = println(s"Moving: $tmpDestination ===> $destination")
-        _               <- S3Action.fromResultT(Hdfs.mkdir(destination.getParent).run(context.getConfiguration))
-        _               <- S3Action.fromResultT(Hdfs.mv(tmpDestination, destination).run(context.getConfiguration))
+        _               <- S3Action.fromRIO(Hdfs.mkdir(destination.getParent).run(context.getConfiguration))
+        _               <- S3Action.fromRIO(Hdfs.mv(tmpDestination, destination).run(context.getConfiguration))
         _               = totalFilesDownloaded.increment(1)
       } yield ()
 
@@ -187,7 +187,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         } yield ()
     }
 
-    action.execute(client).unsafePerformIO() match {
+    action.execute(client).unsafePerformIO match {
       case Error(e) =>
         sys.error(Result.asString(e))
       case Ok(_) =>
@@ -202,17 +202,17 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
 
   def validateDownload(to: Path, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
     // Check no file in target location
-    S3Action.fromResultT(Hdfs.exists(to).run(conf).flatMap(
-      ResultT.when(_,
-        ResultT.failIO[Unit](s"notion dist-copy download failed - target file exists. ( ${to.toString} )")
+    S3Action.fromRIO(Hdfs.exists(to).run(conf).flatMap(
+      RIO.when(_,
+        RIO.failIO[Unit](s"notion dist-copy download failed - target file exists. ( ${to.toString} )")
       )))
   }
 
   def validateUpload(to: S3Address, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
     // Check no file in target location
-    S3Action.fromResultT(to.exists.executeT(client).flatMap(
-      ResultT.when(_,
-        ResultT.failIO[Unit](s"notion dist-copy upload failed - target file exists. ( ${to.render} )")
+    S3Action.fromRIO(to.exists.execute(client).flatMap(
+      RIO.when(_,
+        RIO.failIO[Unit](s"notion dist-copy upload failed - target file exists. ( ${to.render} )")
       )))
   }
 

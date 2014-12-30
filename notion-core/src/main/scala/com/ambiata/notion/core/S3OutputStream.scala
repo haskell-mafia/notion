@@ -13,13 +13,13 @@ import scalaz._, Scalaz._, effect.IO
 object S3OutputStream {
   def stream(address: S3Address, client: AmazonS3Client): RIO[OutputStream] = {
     val tmpPath = uniqueFilePath
-    ResultT.safe[IO, OutputStream]({
+    RIO.safe[OutputStream]({
       val f = new BufferedOutputStream(new FileOutputStream(tmpPath.path))
       new OutputStream {
         override def close(): Unit = {
           runWithFilePath(tmpPath) { file =>
-            ResultT.safe[IO, Unit](f.close) >>
-              address.putFile(file).executeT(client)
+            RIO.safe[Unit](f.close) >>
+              address.putFile(file).execute(client)
           }.run.unsafePerformIO
           ()
         }

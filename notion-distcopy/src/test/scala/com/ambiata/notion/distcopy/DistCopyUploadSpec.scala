@@ -57,8 +57,8 @@ Upload files from HDFS to S3
         withS3Address(address => for {
           _ <- Hdfs.writeWith(new Path(file.path), f => Streams.write(f, data.value, "UTF-8")).run(conf)
           _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
-          e <- address.exists.executeT(s3Client)
-          d <- address.get.executeT(s3Client)
+          e <- address.exists.execute(s3Client)
+          d <- address.get.execute(s3Client)
         } yield e -> d)))
   } must beOkValue(true -> data.value))
 
@@ -77,10 +77,10 @@ Upload files from HDFS to S3
                       UploadMapping(new Path(one.path), s3one)
                     , UploadMapping(new Path(two.path), s3two)
                   )), distCopyConf(conf, s3Client))
-                e1 <- s3one.exists.executeT(s3Client)
-                e2 <- s3two.exists.executeT(s3Client)
-                d1 <- s3two.get.executeT(s3Client)
-                d2 <- s3two.get.executeT(s3Client)
+                e1 <- s3one.exists.execute(s3Client)
+                e2 <- s3two.exists.execute(s3Client)
+                d1 <- s3two.get.execute(s3Client)
+                d2 <- s3two.get.execute(s3Client)
               } yield (e1, e2, d1, d2))))))
   } must beOkValue((true, true, data, data)))
 
@@ -97,7 +97,7 @@ Upload files from HDFS to S3
       withFilePath(file =>
         withS3Address(address => for {
           _ <- Hdfs.writeWith(new Path(file.path), f => Streams.write(f, data.value, "UTF-8")).run(conf)
-          _ <- address.put(data.value).executeT(s3Client)
+          _ <- address.put(data.value).execute(s3Client)
           _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
         } yield ())))
   } must beFail)

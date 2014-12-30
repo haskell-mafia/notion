@@ -54,9 +54,9 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
         withS3Address(s3C => {
           val path = new Path("foo")
           for {
-            _ <- s3A.put("aaaaaaaaaaa").executeT(s3Client)
-            _ <- s3B.put("bbbb").executeT(s3Client)
-            _ <- s3C.put("c").executeT(s3Client)
+            _ <- s3A.put("aaaaaaaaaaa").execute(s3Client)
+            _ <- s3B.put("bbbb").execute(s3Client)
+            _ <- s3C.put("c").execute(s3Client)
             r <- DistCopyInputFormat.calc(
               Mappings(Vector(
                   DownloadMapping(s3A, path)

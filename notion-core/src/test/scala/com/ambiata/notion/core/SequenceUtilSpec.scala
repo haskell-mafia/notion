@@ -33,7 +33,7 @@ class SequenceUtilSpec extends Specification with ScalaCheck { def is = s2"""
 
   def s3 = prop((list: List[String]) => {
     withS3Address(s3 => {
-      runTest(S3Location(s3.bucket, s3.key), list, s3.exists.executeT(client))
+      runTest(S3Location(s3.bucket, s3.key), list, s3.exists.execute(client))
     }) must beOkValue(true -> list) }).set(minTestsOk = 10)
 
   def hdfs = prop((list: List[String] ) => {
@@ -43,7 +43,7 @@ class SequenceUtilSpec extends Specification with ScalaCheck { def is = s2"""
 
   def runTest(loc: Location, l: List[String], exists: RIO[Boolean]): RIO[(Boolean, List[String])]  = for {
     _ <- SequenceUtil.writeBytes(loc, conf, client, None){
-      writer => ResultT.safe(l.foreach(s => writer(s.getBytes("UTF-8"))))
+      writer => RIO.safe(l.foreach(s => writer(s.getBytes("UTF-8"))))
     }
     e <- exists
     r <- SequenceUtil.readThrift[String](loc, conf, client){
