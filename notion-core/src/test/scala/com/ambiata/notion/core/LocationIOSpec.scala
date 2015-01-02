@@ -5,17 +5,15 @@ import org.specs2.execute.AsResult
 import org.specs2.matcher._
 import org.apache.hadoop.conf.Configuration
 import org.specs2.specification.FixtureExample
-import com.ambiata.mundane.control._
+
+import com.ambiata.disorder._
 import com.ambiata.saws.core.Clients
-import com.ambiata.notion.core.TemporaryType._
-import com.ambiata.poacher.hdfs.TemporaryConfiguration._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing.RIOMatcher._
-import scalaz._, Scalaz._
-import TemporaryLocations._
-import Arbitraries._
 
-class LocationIOSpec extends Specification with ForeachTemporaryType with ScalaCheck { def is = section("aws") ^ s2"""
+import scalaz._, Scalaz._
+
+class LocationIOSpec extends Specification  with ScalaCheck { def is = s2"""
 
  The LocationIO class provides functions to read/write/query locations on different systems
 
@@ -29,104 +27,75 @@ class LocationIOSpec extends Specification with ForeachTemporaryType with ScalaC
    exists                  $exists
 
 """
+  override implicit def defaultParameters: Parameters =
+    new Parameters(minTestsOk = 3, workers = 3)
 
-  def isDirectory = { temporaryType: TemporaryType =>
-    "This location is a directory on "+temporaryType ==> {
-      withLocationDir(temporaryType) { location =>
-        withLocationIO { locationIO =>
-          locationIO.writeUtf8(location </> "file", "") >>
-          locationIO.isDirectory(location)
-        }
-      } must beOkValue(true)
-    }
-  }
+  def isDirectory = prop((loc: LocationTemporary, id: Ident, data: String) => for {
+    p <- loc.location
+    i <- loc.io
+    _ <- i.writeUtf8(p </> FilePath.unsafe(id.value), data)
+    e <- i.isDirectory(p)
+  } yield e ==== true)
 
-  def isFile = { temporaryType: TemporaryType =>
-    "The location is a file on "+temporaryType ==> {
-      withLocationFile(temporaryType) { location =>
-        withLocationIO { locationIO =>
-          locationIO.writeUtf8(location, "") >>
-          locationIO.isDirectory(location)
-        }
-      } must beOkValue(false)
-    }
-  }
+  def isFile = prop((loc: LocationTemporary, data: String) => for {
+    p <- loc.location
+    i <- loc.io
+    _ <- i.writeUtf8(p, data)
+    e <- i.isDirectory(p)
+  } yield e ==== false)
 
-  def deleteAll = { temporaryType: TemporaryType =>
-    "All files are deleted "+temporaryType ==> {
-      withLocationDir(temporaryType) { location =>
-        withLocationIO { locationIO =>
-          locationIO.writeUtf8(location </> "file1", "test") >>
-          locationIO.writeUtf8(location </> "file2", "test") >>
-          locationIO.deleteAll(location) >>
-          locationIO.list(location)
-        }
-      } must beOkValue(Nil)
-    }
-  }
+  def deleteAll = prop((loc: LocationTemporary, dp: DistinctPair[Ident], data: String) => for {
+    p <- loc.location
+    i <- loc.io
+    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.first.value), data)
+    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.second.value), data)
+    _ <- i.deleteAll(p)
+    l <- i.list(p)
+  } yield l ==== nil)
 
-  def delete = { temporaryType: TemporaryType =>
-    "The file is deleted on "+temporaryType ==> {
-      withLocationFile(temporaryType) { location =>
-        withLocationIO { locationIO =>
-          locationIO.writeUtf8(location, "test") >>
-          locationIO.delete(location) >>
-          locationIO.exists(location)
-        }
-      } must beOkValue(false)
-    }
-  }
+  def delete = prop((loc: LocationTemporary, data: String) => for {
+    p <- loc.location
+    i <- loc.io
+    _ <- i.writeUtf8(p, data)
+    _ <- i.delete(p)
+    e <- i.exists(p)
+  } yield e ==== false)
 
-  def readWriteLines = prop { (temporaryType: TemporaryType, lines: List[String]) =>
+  def readWriteLines = prop((loc: LocationTemporary, lines: List[String]) => {
     // we remove spaces from lines in this test
     // because reading lines will split the text on newlines
     val linesWithoutSpaces = lines.map(_.replaceAll("\\s", ""))
-    withLocationFile(temporaryType) { location =>
-      withLocationIO { locationIO =>
-        locationIO.writeUtf8Lines(location, linesWithoutSpaces) >>
-        locationIO.readLines(location)
-      }
-    } must beOkValue(linesWithoutSpaces)
-  }
+    for {
+      p <- loc.location
+      i <- loc.io
+      _ <- i.writeUtf8Lines(p, linesWithoutSpaces)
+      r <- i.readLines(p)
+    } yield r ==== linesWithoutSpaces
+  })
 
-  def streamLines = prop { (temporaryType: TemporaryType, lines: List[String]) =>
+  def streamLines = prop((loc: LocationTemporary, lines: List[String]) => {
     val linesWithoutSpaces = lines.map(_.replaceAll("\\s", ""))
-    withLocationFile(temporaryType) { location =>
-      withLocationIO { locationIO =>
-        locationIO.writeUtf8Lines(location, linesWithoutSpaces) >>
-        locationIO.streamLinesUTF8(location, List[String]())(_ :: _).map(_.reverse)
-      }
-    } must beOkValue(linesWithoutSpaces)
-  }
+    for {
+      p <- loc.location
+      i <- loc.io
+      _ <- i.writeUtf8Lines(p, linesWithoutSpaces)
+      r <- i.streamLinesUTF8(p, List[String]())(_ :: _).map(_.reverse)
+    } yield r ==== linesWithoutSpaces
+  })
 
-  def list = { temporaryType: TemporaryType =>
-    "All files are listed on "+temporaryType ==> {
-      withLocationDir(temporaryType) { location =>
-        withLocationIO { locationIO =>
-          locationIO.writeUtf8(location </> "file1", "") >>
-          locationIO.writeUtf8(location </> "file2", "") >>
-          locationIO.list(location).map(ls => (ls.map(_.render.split("/").last), List("file1", "file2")))
-        }
-      } must beOkLike { case (ls1, ls2) => ls1.toSet must_== ls2.toSet }
-    }
-  }
+  def list = prop((loc: LocationTemporary, dp: DistinctPair[Ident], data: String) => for {
+    p <- loc.location
+    i <- loc.io
+    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.first.value), data)
+    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.second.value), data)
+    r <- i.list(p)
+    l = r.length
+  } yield r.map(_.render.split("/").last).toSet -> l ==== Set(dp.first.value, dp.second.value) -> 2)
 
-  def exists = { temporaryType: TemporaryType =>
-    "There is a file on "+temporaryType ==> {
-       withLocationFile(temporaryType) { location =>
-         withLocationIO { locationIO =>
-           locationIO.writeUtf8(location, "") >>
-           locationIO.exists(location)
-         }
-      } must beOkValue(true)
-    }
-  }
-
-  def withLocationIO[A](f: LocationIO => RIO[A]): RIO[A] =
-    withConf(conf => f(LocationIO(conf, Clients.s3)))
-}
-
-trait ForeachTemporaryType extends FixtureExample[TemporaryType] with MustMatchers {
-  def fixture[R : AsResult](f: TemporaryType => R) =
-    Seq(Posix, Hdfs, S3).toStream.map(t => AsResult(f(t))).reduceLeft(_ and _)
+  def exists = prop((loc: LocationTemporary, data: String) => for {
+    p <- loc.location
+    i <- loc.io
+    _ <- i.writeUtf8(p, data)
+    e <- i.exists(p)
+  } yield e ==== true)
 }

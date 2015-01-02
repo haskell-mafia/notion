@@ -25,7 +25,7 @@ object S3InputStream {
       RIO.safe[InputStream](
         new LocalInputStream(tmpPath.path) {
           override def close(): Unit = {
-            Files.delete(tmpPath).run.unsafePerformIO()
+            Files.delete(tmpPath).unsafePerformIO
             super.close()
           }
         }

@@ -1,18 +1,16 @@
 package com.ambiata.notion.distcopy
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
-import com.ambiata.mundane.control._
-import com.ambiata.mundane.io.TemporaryFilePath._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.notion.distcopy.Arbitraries._
-import com.ambiata.poacher.hdfs.Hdfs
+import com.ambiata.poacher.hdfs._
+import com.ambiata.poacher.hdfs.Arbitraries._
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.s3.TemporaryS3._
+import com.ambiata.saws.s3._
+import com.ambiata.saws.testing.Arbitraries._
 import MemoryConversions._
 
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
 import org.specs2._
 import org.specs2.matcher.Parameters
 
@@ -25,35 +23,23 @@ Syncing files between S3 and HDFS
 
 """
 
-  def withConf[A](f: Configuration => RIO[A]): RIO[A] = TemporaryDirPath.withDirPath { dir =>
-    val c = new Configuration()
-    c.set("hadoop.tmp.dir", dir.path)
-    f(c)
-  }
-
   val s3Client: AmazonS3Client = Clients.s3
 
   override implicit def defaultParameters: Parameters =
     new Parameters(minTestsOk = 3)
 
-  def file = propNoShrink((data: BigData) => {
-    withConf(conf =>
-      withFilePath(sourceFile =>
-        withFilePath(targetFile =>
-          withS3Address(sourceAddress =>
-            withS3Address(targetAddress => {
-              val sourcePath = new Path(sourceFile.path)
-              val targetPath = new Path(targetFile.path)
-              for {
-                _ <- Hdfs.writeWith(sourcePath, f => Streams.write(f, data.value, "UTF-8")).run(conf)
-                _ <- sourceAddress.put(data.value).execute(s3Client)
-                _ <- DistCopyJob.run(
-                  Mappings(Vector(
-                      UploadMapping(sourcePath, targetAddress)
-                    , DownloadMapping(sourceAddress, targetPath)
-                  )), DistCopyConfiguration(conf, s3Client, 1, 1, 10.mb, 10.mb, 100.mb))
-                s <- targetAddress.get.execute(s3Client)
-                h <- Hdfs.readContentAsString(targetPath).run(conf)
-              } yield s -> h })))))
-  } must beOkValue(data.value -> data.value))
+  def file = propNoShrink((s3: S3Temporary, hdfs: HdfsTemporary, data: BigData) => for {
+    c <- ConfigurationTemporary.random.conf
+    a <- s3.address.execute(s3Client)
+    b <- s3.address.execute(s3Client)
+    x <- hdfs.path.run(c)
+    y <- hdfs.path.run(c)
+    _ <- a.put(data.value).execute(s3Client)
+    _ <- Hdfs.write(x, data.value).run(c)
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(x, b), DownloadMapping(a, y))),
+      DistCopyConfiguration(c, s3Client, 1, 1, 10.mb, 10.mb, 100.mb))
+    i <- b.get.execute(s3Client)
+    o <- Hdfs.readContentAsString(y).run(c)
+  } yield i -> o ==== data.value -> data.value)
+
 }

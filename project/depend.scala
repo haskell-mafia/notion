@@ -13,22 +13,28 @@ object depend {
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
 
-  val sawsVersion = "1.2.1-20141230230928-5f210aa"
+  val sawsVersion = "1.2.1-20150107025036-cf7b8a3"
   val saws      = Seq("com.ambiata"          %% "saws-s3"            % sawsVersion excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
     ExclusionRule(organization = "com.owtelse.codec")
-  ))
+  )) ++           Seq("com.ambiata"          %% "saws-testing"       % sawsVersion % "test->test")
 
-  val mundaneVersion = "1.2.1-20141230225616-50fc792"
+  val mundaneVersion = "1.2.1-20150107022646-a11fc35"
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
                       "com.ambiata"          %% c                 % mundaneVersion) ++
+                  Seq("com.ambiata"          %% "mundane-io"      % mundaneVersion % "test->test") ++
                   Seq("com.ambiata"          %% "mundane-testing" % mundaneVersion % "test")
 
+  val disorder =  Seq("com.ambiata"          %% "disorder"        % "0.0.1-20150102073535-5c2d9d6" % "test")
+
   def poacher(version: String) =
-    if (version.contains("cdh4"))      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20141230231304-e4168c2") ++ hadoop(version)
-    else if (version.contains("cdh5")) Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20141230231304-e4168c2") ++ hadoop(version)
-    else                               sys.error(s"unsupported poacher version, can not build for $version")
+    if (version.contains("cdh4"))
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150107025157-1ad2936" % "compile->compile;test->test") ++ hadoop(version)
+    else if (version.contains("cdh5"))
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150107025913-1ad2936" % "compile->compile;test->test") ++  hadoop(version)
+    else
+      sys.error(s"unsupported poacher version, can not build for $version")
 
   def hadoop(version: String, hadoopVersion: String = "2.2.0") =
     if (version.contains("cdh4"))      Seq("org.apache.hadoop" % "hadoop-client" % "2.0.0-mr1-cdh4.6.0" % "provided" exclude("asm", "asm"),

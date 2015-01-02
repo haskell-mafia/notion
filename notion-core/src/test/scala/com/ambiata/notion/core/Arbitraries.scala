@@ -1,6 +1,7 @@
 package com.ambiata.notion.core
 
 import com.ambiata.notion.core.TemporaryType._
+import org.apache.hadoop.conf.Configuration
 import org.scalacheck._
 
 object Arbitraries {
@@ -13,4 +14,7 @@ object Arbitraries {
   implicit def TemporaryTypeArbitrary: Arbitrary[TemporaryType] = {
     Arbitrary(if (awsEnabled) Gen.oneOf(Posix, S3, Hdfs) else Gen.oneOf(Posix, Hdfs))
   }
+
+
+
 }
