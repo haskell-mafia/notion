@@ -1,6 +1,7 @@
 package com.ambiata.notion.core
 
 import com.ambiata.mundane.control._
+import com.ambiata.mundane.io._
 import com.ambiata.poacher.scoobi.ScoobiAction
 import com.ambiata.poacher.hdfs._
 import com.ambiata.saws.s3._
@@ -14,15 +15,17 @@ import org.apache.hadoop.fs.{Hdfs => _, _}
 import java.io._
 import java.util.UUID
 
-import scalaz._, effect.Effect._
+import scalaz._, Scalaz._, effect.Effect._
 
 object SequenceUtil {
   def writeBytes(location: Location, conf: Configuration, client: AmazonS3Client, codec: Option[CompressionCodec])(f: (Array[Byte] => Unit) => RIO[Unit]): RIO[Unit] ={
     val out = (location match {
       case HdfsLocation(p) =>
-        RIO.safe[OutputStream](FileSystem.get(conf).create(new Path(p)))
+        Hdfs.mkdir(new Path(p).getParent).run(conf) >>
+          RIO.safe[OutputStream](FileSystem.get(conf).create(new Path(p)))
       case LocalLocation(p) =>
-        RIO.safe[OutputStream](new BufferedOutputStream(new FileOutputStream(p)))
+        Directories.mkdirs(FilePath.unsafe(p).dirname) >>
+          RIO.safe[OutputStream](new BufferedOutputStream(new FileOutputStream(p)))
       case S3Location(bucket, key) =>
         S3OutputStream.stream(S3Address(bucket, key), client)
     })
