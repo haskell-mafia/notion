@@ -15,7 +15,7 @@ import scodec.bits.ByteVector
 
 case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnlyStore[RIO] {
   def list(prefix: Key): RIO[List[Key]] =
-    run { (s3 / prefix.name).listPrefix.map(_.map( p => {
+    run { (s3 / prefix.name).listAddress.map(_.map( p => {
       new Key(p.removeCommonPrefix(s3).cata(_.split(S3Operations.DELIMITER).toList, Nil).map(KeyName.unsafe).toVector)
     }))}
 
@@ -94,12 +94,9 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
 
 }
 
-case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends Store[RIO] with ReadOnlyStore[RIO] {
+case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with ReadOnlyStore[RIO] {
   val root: S3Prefix =
     s3
-
-  def local =
-    PosixStore(cache)
 
   val readOnly: ReadOnlyStore[RIO] =
     S3ReadOnlyStore(s3, client)
@@ -221,15 +218,8 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client, cache: DirPath) extends
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
       readOnly.unsafe.withInputStream(key)(f)
 
-    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] = {
-      val unique = Key.unsafe(UUID.randomUUID.toString)
-      local.unsafe.withOutputStream(unique)(f) >> local.unsafe.withInputStream(unique)(in =>
-        run { (s3 | key.name).putStreamWithMetadata(in, S3Address.ReadLimitDefault, {
-          val metadata = S3.ServerSideEncryption
-          metadata.setContentLength((local.root </> keyToFilePath(unique)).toFile.length)
-          metadata
-        }).void })
-    }
+    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
+      S3OutputStream.stream(s3 | key.name, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
   }
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
@@ -243,7 +233,7 @@ object S3Store {
   def createReadOnly(s3: S3Prefix): S3Action[ReadOnlyStore[RIO]] =
     S3Action.client.map(c => S3ReadOnlyStore(s3, c))
 
-  def create(s3: S3Prefix, cache: DirPath): S3Action[Store[RIO]] =
-    S3Action.client.map(c => S3Store(s3, c, cache))
+  def create(s3: S3Prefix): S3Action[Store[RIO]] =
+    S3Action.client.map(c => S3Store(s3, c))
 
 }

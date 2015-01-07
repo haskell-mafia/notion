@@ -1,23 +1,22 @@
 package com.ambiata.notion.distcopy
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
-
-import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
-import com.ambiata.mundane.io.TemporaryFilePath._
 import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.notion.distcopy.Arbitraries._
-import com.ambiata.poacher.hdfs.Hdfs
+import com.ambiata.poacher.hdfs._
+import com.ambiata.poacher.hdfs.Arbitraries._
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.s3.TemporaryS3._
+import com.ambiata.saws.s3._
+import com.ambiata.saws.testing.Arbitraries._
 import MemoryConversions._
 
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
-import org.scalacheck._, Arbitrary._
 
 import org.specs2._
 import org.specs2.matcher.Parameters
+
+import scalaz._, Scalaz._
 
 class DistCopyUploadSpec extends Specification with ScalaCheck { def is = section("aws") ^ s2"""
 
@@ -29,12 +28,9 @@ Upload files from HDFS to S3
   Handle failure (target file exists)       $targetExists
 
 """
+  override implicit def defaultParameters: Parameters =
+    new Parameters(minTestsOk = 3)
 
-  def withConf[A](f: Configuration => RIO[A]): RIO[A] = TemporaryDirPath.withDirPath { dir =>
-    val c = new Configuration()
-    c.set("hadoop.tmp.dir", dir.path)
-    f(c)
-  }
   val s3Client: AmazonS3Client = Clients.s3
 
   def distCopyConf(c: Configuration, client: AmazonS3Client): DistCopyConfiguration =
@@ -48,58 +44,40 @@ Upload files from HDFS to S3
       , 100.mb
     )
 
-  override implicit def defaultParameters: Parameters =
-    new Parameters(minTestsOk = 3)
+ def uploadFile = propNoShrink((s3: S3Temporary, hdfs: HdfsTemporary, data: BigData) => for {
+   c <- ConfigurationTemporary.random.conf
+   a <- s3.address.execute(s3Client)
+   p <- hdfs.path.run(c)
+   _ <- Hdfs.write(p, data.value).run(c)
+   _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
+   r <- a.get.execute(s3Client)
+ } yield r ==== data.value)
 
-  def uploadFile = propNoShrink((data: BigData) => {
-    withConf[(Boolean, String)](conf =>
-      withFilePath(file =>
-        withS3Address(address => for {
-          _ <- Hdfs.writeWith(new Path(file.path), f => Streams.write(f, data.value, "UTF-8")).run(conf)
-          _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
-          e <- address.exists.execute(s3Client)
-          d <- address.get.execute(s3Client)
-        } yield e -> d)))
-  } must beOkValue(true -> data.value))
+  def multipleFiles = prop((s3: S3Temporary, hdfs: HdfsTemporary, data: String) => for {
+    c <- ConfigurationTemporary.random.conf
+    a <- s3.address.execute(s3Client)
+    b <- s3.address.execute(s3Client)
+    x <- hdfs.path.run(c)
+    y <- hdfs.path.run(c)
+    _ <- List(x, y).traverse(Hdfs.write(_, data).run(c))
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(x, a), UploadMapping(y, b))), distCopyConf(c, s3Client))
+    r <- a.get.execute(s3Client)
+    z <- b.get.execute(s3Client)
+  } yield r -> z ==== data -> data)
 
+ def noSourceFile = propNoShrink((s3: S3Temporary, hdfs: HdfsTemporary) => (for {
+   c <- ConfigurationTemporary.random.conf
+   a <- s3.address.execute(s3Client)
+   p <- hdfs.path.run(c)
+   _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
+ } yield ()) must beFail)
 
-  def multipleFiles = prop((data: String) => {
-    withConf(conf =>
-      withFilePath(one =>
-        withFilePath(two =>
-          withS3Address(s3one =>
-            withS3Address(s3two =>
-              for {
-                _ <- Hdfs.writeWith(new Path(one.path), f => Streams.write(f, data, "UTF-8")).run(conf)
-                _ <- Hdfs.writeWith(new Path(two.path), f => Streams.write(f, data, "UTF-8")).run(conf)
-                _ <- DistCopyJob.run(
-                  Mappings(Vector(
-                      UploadMapping(new Path(one.path), s3one)
-                    , UploadMapping(new Path(two.path), s3two)
-                  )), distCopyConf(conf, s3Client))
-                e1 <- s3one.exists.execute(s3Client)
-                e2 <- s3two.exists.execute(s3Client)
-                d1 <- s3two.get.execute(s3Client)
-                d2 <- s3two.get.execute(s3Client)
-              } yield (e1, e2, d1, d2))))))
-  } must beOkValue((true, true, data, data)))
-
-  def noSourceFile = prop((data: BigData) => {
-    withConf(conf =>
-      withFilePath(file =>
-        withS3Address(address =>
-          DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
-        )))
-  } must beFail)
-
-  def targetExists = prop((data: BigData) => {
-    withConf(conf =>
-      withFilePath(file =>
-        withS3Address(address => for {
-          _ <- Hdfs.writeWith(new Path(file.path), f => Streams.write(f, data.value, "UTF-8")).run(conf)
-          _ <- address.put(data.value).execute(s3Client)
-          _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(new Path(file.path), address))), distCopyConf(conf, s3Client))
-        } yield ())))
-  } must beFail)
-
+ def targetExists = propNoShrink((s3: S3Temporary, hdfs: HdfsTemporary) => (for {
+   c <- ConfigurationTemporary.random.conf
+   a <- s3.address.execute(s3Client)
+   p <- hdfs.path.run(c)
+   _ <- Hdfs.write(p, "").run(c)
+   _ <- a.put("").execute(s3Client)
+   _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
+ } yield ()) must beFail)
 }

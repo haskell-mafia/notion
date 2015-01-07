@@ -1,14 +1,12 @@
 package com.ambiata.notion.distcopy
 
-import com.ambiata.mundane.io._
-import com.ambiata.mundane.io.TemporaryFilePath._
 import com.ambiata.mundane.testing.RIOMatcher._
-import com.ambiata.poacher.hdfs.Hdfs
+import com.ambiata.poacher.hdfs._
+import com.ambiata.poacher.hdfs.Arbitraries._
 import com.ambiata.saws.core.Clients
-import com.ambiata.saws.s3.S3Address
-import com.ambiata.saws.s3.TemporaryS3._
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
+import com.ambiata.saws.s3._
+import com.ambiata.saws.testing.Arbitraries._
+
 import org.specs2._
 
 
@@ -21,50 +19,39 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
  calculate download mappings              $download ${tag("aws")}
 
 """
-
-  val conf = new Configuration()
   val s3Client = Clients.s3
 
-  def upload = {
-    withFilePath(fileA =>
-      withFilePath(fileB =>
-        withFilePath(fileC => {
-          val pathA = new Path(fileA.path)
-          val pathB = new Path(fileB.path)
-          val pathC = new Path(fileC.path)
-          val s3 = S3Address("","")
-          for {
-            _ <- Hdfs.writeWith(pathA, f => Streams.write(f, "a", "UTF-8")).run(conf)
-            _ <- Hdfs.writeWith(pathB, f => Streams.write(f, "bbbbbb", "UTF-8")).run(conf)
-            _ <- Hdfs.writeWith(pathC, f => Streams.write(f, "c", "UTF-8")).run(conf)
-            r <- DistCopyInputFormat.calc(
-              Mappings(Vector(
-                  UploadMapping(pathA, s3)
-                , UploadMapping(pathB, s3)
-                , UploadMapping(pathC, s3)
-              )), 2, s3Client, conf)
-          } yield r
-        })))
-  } must beOkValue(Workloads(Vector(Workload(Vector(1)), Workload(Vector(0, 2)))))
+  def upload = prop((s3: S3Temporary, hdfs: HdfsTemporary) => for {
+    q <- ConfigurationTemporary.random.conf
+    a <- hdfs.path.run(q)
+    b <- hdfs.path.run(q)
+    c <- hdfs.path.run(q)
+    s <- s3.address.execute(s3Client)
+    _ <- Hdfs.write(a, "a").run(q)
+    _ <- Hdfs.write(b, "bbbbbbb").run(q)
+    _ <- Hdfs.write(c, "c").run(q)
+    r <- DistCopyInputFormat.calc(
+      Mappings(Vector(
+          UploadMapping(a, s)
+        , UploadMapping(b, s)
+        , UploadMapping(c, s)
+      )), 2, s3Client, q)
+  } yield r ==== Workloads(Vector(Workload(Vector(1)), Workload(Vector(0, 2)))))
 
-
-  def download = {
-    withS3Address(s3A =>
-      withS3Address(s3B =>
-        withS3Address(s3C => {
-          val path = new Path("foo")
-          for {
-            _ <- s3A.put("aaaaaaaaaaa").execute(s3Client)
-            _ <- s3B.put("bbbb").execute(s3Client)
-            _ <- s3C.put("c").execute(s3Client)
-            r <- DistCopyInputFormat.calc(
-              Mappings(Vector(
-                  DownloadMapping(s3A, path)
-                , DownloadMapping(s3B, path)
-                , DownloadMapping(s3C, path)
-              )), 2, s3Client, conf)
-          } yield r
-        })))
-  } must beOkValue(Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2)))))
-
+  def download = prop((s3: S3Temporary, hdfs: HdfsTemporary) => for {
+    q <- ConfigurationTemporary.random.conf
+    a <- s3.address.execute(s3Client)
+    b <- s3.address.execute(s3Client)
+    c <- s3.address.execute(s3Client)
+    h <- hdfs.path.run(q)
+    _ <- a.put("aaaaaaaaaaaaaaaaaa").execute(s3Client)
+    _ <- b.put("bbbbb").execute(s3Client)
+    _ <- c.put("c").execute(s3Client)
+    r <- DistCopyInputFormat.calc(
+      Mappings(Vector(
+          DownloadMapping(a, h)
+        , DownloadMapping(b, h)
+        , DownloadMapping(c, h)
+      )), 2, s3Client, q)
+  } yield r ==== Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2))))).set(minTestsOk = 20)
 }

@@ -1,8 +1,7 @@
 package com.ambiata.notion.core
 
 import com.ambiata.mundane.control._
-import com.ambiata.mundane.io.Temporary._
-import com.ambiata.mundane.io.TemporaryFilePath._
+import com.ambiata.mundane.io._
 import com.ambiata.saws.s3._
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 
@@ -11,16 +10,18 @@ import java.io._
 import scalaz._, Scalaz._, effect.IO
 
 object S3OutputStream {
-  def stream(address: S3Address, client: AmazonS3Client): RIO[OutputStream] = {
-    val tmpPath = uniqueFilePath
-    RIO.safe[OutputStream]({
-      val f = new BufferedOutputStream(new FileOutputStream(tmpPath.path))
+  def stream(address: S3Address, client: AmazonS3Client): RIO[OutputStream] = for {
+    t <- LocalTemporary.random.setup.pure[RIO]
+    d = t._1
+    p = t._2.toFilePath
+    _ <- Directories.mkdirs(p.dirname)
+    o <- RIO.safe[OutputStream]({
+      val f = new BufferedOutputStream(new FileOutputStream(p.path))
       new OutputStream {
         override def close(): Unit = {
-          runWithFilePath(tmpPath) { file =>
+          (RIO.addFinalizer(Finalizer(Directories.delete(d).void)) >>
             RIO.safe[Unit](f.close) >>
-              address.putFile(file).execute(client)
-          }.run.unsafePerformIO
+              address.putFile(p).execute(client)).unsafePerformIO
           ()
         }
 
@@ -34,5 +35,6 @@ object S3OutputStream {
           f.write(b, off, len)
       }
     })
-  }
+  } yield o
+
 }

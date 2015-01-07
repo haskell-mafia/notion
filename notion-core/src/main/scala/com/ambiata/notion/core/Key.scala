@@ -1,9 +1,13 @@
 package com.ambiata.notion.core
 
+import scalaz._, Scalaz._
+
 /**
  * Key to access a value in a key-value Store
  */
 case class Key(components: Vector[KeyName]) {
+  override def toString: String =
+    s"Key($name)"
 
   def prepend(keyName: KeyName): Key =
     copy(components = keyName +: components)
@@ -49,5 +53,11 @@ object Key {
   /** for now this can't return None because the only value we exclude from a KeyName is / */
   def fromString(s: String): Option[Key] =
     Some(new Key(s.split("/").toVector.map(KeyName.unsafe)))
+
+  implicit def KeyOrder: Order[Key] =
+    Order.order((x, y) => x.name.?|?(y.name))
+
+  implicit def KeyOrdering: scala.Ordering[Key] =
+    KeyOrder.toScalaOrdering
 
 }

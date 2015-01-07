@@ -33,6 +33,7 @@ object build extends Build {
   , crossScalaVersions := Seq(scalaVersion.value)
   , fork in run := true
   , resolvers := depend.resolvers
+  , publishArtifact in (Test, packageBin) := true
   ) ++ Seq(prompt)
 
   lazy val core = Project(
@@ -45,7 +46,8 @@ object build extends Build {
       depend.mundane ++
       depend.poacher(version.value) ++
       depend.saws    ++
-      depend.specs2
+      depend.specs2  ++
+      depend.disorder
     )
   )
 
@@ -78,7 +80,7 @@ object build extends Build {
     , "-target"
     , "1.6"
     )
-  , maxErrors := 20
+  , maxErrors := 10
   , scalacOptions ++= Seq(
       "-target:jvm-1.6"
     , "-deprecation"
@@ -94,7 +96,6 @@ object build extends Build {
     )
   , scalacOptions in (Compile,console) := Seq("-language:_", "-feature")
   , scalacOptions in (Test,console) := Seq("-language:_", "-feature")
-  , scalacOptions in ScoverageCompile := Seq("-language:_", "-feature")
   )
 
   def lib(name: String) =
@@ -114,7 +115,7 @@ object build extends Build {
                                Seq()
                              else
                                Seq(Tests.Argument("--", "exclude", "aws")))
-  ) ++ instrumentSettings ++ Seq(ScoverageKeys.highlighting := true)
+  )
 
   lazy val prompt = shellPrompt in ThisBuild := { state =>
     val name = Project.extract(state).currentRef.project

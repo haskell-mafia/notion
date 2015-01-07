@@ -3,16 +3,14 @@ package com.ambiata.notion.core
 import com.ambiata.mundane.control.{Result => _, _}
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing._
-import com.ambiata.mundane.testing.Keys._
 import com.ambiata.mundane.testing.RIOMatcher._
-import com.ambiata.notion.core.Arbitraries._
 import org.specs2._
 import org.specs2.matcher.Parameters
 import scodec.bits.ByteVector
 import scala.io.Codec
 import scalaz.{Store => _, _}, Scalaz._
 
-abstract class StoreSpec extends Specification with ScalaCheck { def is = s2"""
+class StoreSpec extends Specification with ScalaCheck { def is = s2"""
   Store Usage
   ===========
 
@@ -47,151 +45,210 @@ abstract class StoreSpec extends Specification with ScalaCheck { def is = s2"""
   read / write utf8 strings                       $utf8Strings
   read / write lines                              $lines
   read / write utf8 lines                         $utf8Lines
+
+  input stream                                    $inputStream
+  output stream                                   $outputStream
   """
 
   override implicit def defaultParameters: Parameters =
-    new Parameters(minTestsOk = 5, workers = 1, maxDiscardRatio = 100)
-
-  def storeType: TemporaryType
-
-  def run[A](keys: Keys)(f: (Store[RIO], List[Key]) => RIO[A]): RIO[A] =
-    TemporaryStore.withStore(storeType)(store => for {
-      _ <- keys.keys.traverseU(e => store.utf8.write((e.path +"/"+e.value).toKey, e.value.toString))
-      r <- f(store, keys.keys.map(e => e.full.toKey))
-    } yield r)
-
-  def runR[A](keys: Keys, alternateType: TemporaryType)(f: (Store[RIO], Store[RIO], List[Key]) => RIO[A]): RIO[A] =
-    TemporaryStore.withStore(storeType)(store => for {
-      r <- TemporaryStore.withStore(alternateType)(alternate => for {
-        _ <- keys.keys.traverseU(e => store.utf8.write((e.path +"/"+e.value).toKey, e.value.toString))
-        r <- f(store, alternate, full(keys))
-      } yield r)
-    } yield r)
+    new Parameters(minTestsOk = 15, workers = 1, maxDiscardRatio = 100)
 
   def full(keys: Keys): List[Key] =
     keys.keys.map(_.full.toKey)
 
-  def list =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      store.listAll } must beOkLike((_:List[Key]).toSet must_== full(keys).toSet) )
+  def writeKeys(keys: Keys, store: Store[RIO]): RIO[Unit] =
+    keys.keys.traverseU(e => store.utf8.write((e.path + "/" + e.value).toKey, e.value.toString)).void
 
-  def listFromPrefix =
-    propNoShrink((keys: Keys) => run(keys.map(_ prepend "sub")) { (store, keys) =>
-      store.list(Key.Root /"sub") } must beOkLike((_:List[Key]).toSet must_== full(keys.map(_ prepend "sub")).toSet) )
+  def list = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    l <- s.listAll
+  } yield l.sorted ==== full(keys).sorted)
 
-  def listHeadPrefixes =
-    propNoShrink((keys: Keys) => run(keys.map(_ prepend "sub")) { (store, keys) =>
-      store.listHeads(Key.Root /"sub") } must beOkLike((_:List[Key]).toSet
-        must_== full(keys.map(_ prepend "sub")).map(_.fromRoot.head).toSet)).set(workers=1)
+  def listFromPrefix = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys.map(_ prepend "sub"), s)
+    l <- s.list(Key.Root / "sub")
+  } yield l.sorted ==== full(keys.map(_ prepend "sub")).sorted)
 
-  def filter =
-    propNoShrink((keys: Keys) => {
-      val keyss = full(keys)
-      val first = keyss.head
-      val last = keyss.last
-      val expected = if (first == last) List(first) else List(first, last)
-      run(keys) { (store, keys)  =>
-        store.filterAll(x => x == keys.head || x == keys.last)
-      } must beOkLike(e => e must contain(allOf(expected:_*)))
-    })
+  def listHeadPrefixes = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys.map(_ prepend "sub"), s)
+    l <- s.listHeads(Key.Root / "sub")
+  } yield l ==== full(keys.map(_ prepend "sub")).map(_.fromRoot.head).distinct.sorted).set(workers=1)
 
-  def find =
-    propNoShrink((keys: Keys) => keys.keys.length >= 3 ==> { run(keys) { (store, keys) =>
-      store.findAll(_ == keys.drop(2).head) } must beOkValue(Some(full(keys).drop(2).head))
-    })
+  def filter = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    f = full(keys)
+    l <- s.filterAll(x => x == f.head || x == f.last)
+    e = if (f.head == f.last) List(f.head) else List(f.head, f.last)
+  } yield l.sorted ==== e.sorted)
 
-  def findfirst =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      store.findAll(x => x == keys.head) } must beOkValue(Some(full(keys).head)) )
+  def find = propNoShrink((keys: Keys, st: StoreTemporary) => keys.keys.length >= 3 ==> (for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    l <- s.findAll(_ == full(keys).drop(2).head)
+  } yield l ==== full(keys).drop(2).head.some))
 
-  def findlast =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      store.findAll(x => x == keys.last) } must beOkValue(Some(full(keys).last)) )
+  def findfirst = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    l <- s.findAll(_ == full(keys).head)
+  } yield l ==== full(keys).head.some)
 
-  def exists =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      keys.traverseU(store.exists) } must beOkLike(_.forall(identity)) )
+  def findlast = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    l <- s.findAll(_ == full(keys).last)
+  } yield l ==== full(keys).last.some)
 
-  def existsPrefix =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      keys.traverseU(key => store.existsPrefix(key.copy(components = key.components.dropRight(1)))) } must beOkLike(_.forall(identity)) )
+  def exists = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    l <- full(keys).traverseU(s.exists)
+  } yield l ==== l.map(_ => true))
 
-  def notExists =
-    propNoShrink((keys: Keys) => TemporaryStore.withStore(storeType)( store =>
-      store.exists("root" / "missing")) must beOkValue(false))
+  def existsPrefix = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    l <- full(keys).traverseU(k => s.existsPrefix(k.copy(components = k.components.dropRight(1))))
+  } yield l ==== l.map(_ => true))
 
-  def delete =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      val first = keys.head
-      store.delete(first) >> keys.traverseU(store.exists) } must beOkLike(x => !x.head && x.tail.forall(identity)) )
+  def notExists = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    e <- s.exists("root" / "missing")
+  } yield e ==== false)
 
-  def deleteAll =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      store.deleteAllFromRoot >> keys.traverseU(store.exists) } must beOkLike(x => !x.tail.exists(identity)) )
+  def delete = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    _ <- s.delete(full(keys).head)
+    l <- full(keys).traverseU(s.exists)
+  } yield l ==== false :: l.drop(1).map(_ => true))
 
-  def move =
-    propNoShrink((m: KeyEntry, n: KeyEntry) => run(Keys(m :: Nil)) { (store, _) =>
-      store.move(m.full.toKey, n.full.toKey) >>
-        store.exists(m.full.toKey).zip(store.exists(n.full.toKey)) } must beOkValue(false -> true) )
+  def deleteAll = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    _ <- s.deleteAllFromRoot
+    l <- full(keys).traverseU(s.exists)
+  } yield l ==== l.map(_ => false))
 
-  def moveRead =
-    propNoShrink((m: KeyEntry, n: KeyEntry) => run(Keys(m :: Nil)) { (store, _) =>
-      store.move(m.full.toKey, n.full.toKey) >>
-        store.utf8.read(n.full.toKey) } must beOkValue(m.value.toString) )
+  def move = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.move(m.full.toKey, n.full.toKey)
+    e <- s.exists(m.full.toKey).zip(s.exists(n.full.toKey))
+  } yield e ==== false -> true)
 
-  def copy =
-    propNoShrink((m: KeyEntry, n: KeyEntry) => run(Keys(m :: Nil)) { (store, _) =>
-      store.copy(m.full.toKey, n.full.toKey) >>
-        store.exists(m.full.toKey).zip(store.exists(n.full.toKey)) } must beOkValue(true -> true) )
+  def moveRead = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.move(m.full.toKey, n.full.toKey)
+    d <- s.utf8.read(n.full.toKey)
+  } yield d ==== m.value.toString)
 
-  def copyRead =
-    propNoShrink((m: KeyEntry, n: KeyEntry) => run(Keys(m :: Nil)) { (store, _) =>
-      store.copy(m.full.toKey, n.full.toKey) >>
-        store.utf8.read(m.full.toKey).zip(store.utf8.read(n.full.toKey)) } must beOkLike({ case (in, out) => in must_== out }) )
+  def copy = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.copy(m.full.toKey, n.full.toKey)
+    e <- s.exists(m.full.toKey).zip(s.exists(n.full.toKey))
+  } yield e ==== true -> true)
 
-  def mirror =
-    propNoShrink((keys: Keys) => run(keys) { (store, keys) =>
-      store.mirror(Key.Root, Key("mirror")) >> store.list(Key("mirror")) } must
-        beOkLike((_: List[Key]).toSet must_== full(keys).map(_.prepend("mirror")).toSet) )
+  def copyRead = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.copy(m.full.toKey, n.full.toKey)
+    b <- s.utf8.read(m.full.toKey)
+    a <- s.utf8.read(n.full.toKey)
+  } yield b ==== a)
 
-  def moveTo =
-    propNoShrink((m: KeyEntry, n: KeyEntry, t:TemporaryType) => runR(Keys(m :: Nil), t) { (store, alternate, _) =>
-      store.moveTo(alternate, m.full.toKey, n.full.toKey) >>
-        store.exists(m.full.toKey).zip(alternate.exists(n.full.toKey)) } must beOkValue(false -> true) )
+  def mirror = propNoShrink((keys: Keys, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(keys, s)
+    _ <- s.mirror(Key.Root, Key("mirror"))
+    l <- s.list(Key("mirror"))
+  } yield l.sorted ==== full(keys).map(_.prepend("mirror")).sorted)
 
-  def copyTo =
-    propNoShrink((m: KeyEntry, n: KeyEntry, t:TemporaryType) => runR (Keys(m :: Nil), t) { (store, alternate, _) =>
-      store.copyTo(alternate, m.full.toKey, n.full.toKey) >>
-        store.exists(m.full.toKey).zip(alternate.exists(n.full.toKey)) } must beOkValue(true -> true) )
+  def moveTo = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary, alt: StoreTemporary) => for {
+    s <- st.store
+    t <- alt.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.moveTo(t, m.full.toKey, n.full.toKey)
+    e <- s.exists(m.full.toKey)
+    a <- t.exists(n.full.toKey)
+  } yield e -> a ==== false -> true)
 
-  def mirrorTo =
-    propNoShrink((keys: Keys, t:TemporaryType) => runR(keys, t) { (store, alternate, _) =>
-      store.mirrorTo(alternate, Key.Root, Key("mirror")) >> alternate.list(Key("mirror")) } must
-        beOkLike((_: List[Key]).toSet must_== full(keys).map(_.prepend("mirror")).toSet) )
+  def copyTo = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary, alt: StoreTemporary) => for {
+    s <- st.store
+    t <- alt.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.copyTo(t, m.full.toKey, n.full.toKey)
+    e <- s.exists(m.full.toKey)
+    a <- t.exists(n.full.toKey)
+  } yield e -> a ==== true -> true)
 
-  def checksum =
-    propNoShrink((m: KeyEntry) => run(Keys(m :: Nil)) { (store, _) =>
-      store.checksum(m.full.toKey, MD5) } must beOkValue(Checksum.string(m.value.toString, MD5)) )
+  def mirrorTo = propNoShrink((keys: Keys, st: StoreTemporary, alt: StoreTemporary) => for {
+    s <- st.store
+    t <- alt.store
+    _ <- writeKeys(keys, s)
+    _ <- s.mirrorTo(t, Key.Root, Key("mirror"))
+    l <- t.list(Key("mirror"))
+  } yield l.sorted ==== full(keys).map(_.prepend("mirror")).sorted)
 
-  def bytes =
-    propNoShrink((m: KeyEntry, bytes: Array[Byte]) => run(Keys(m :: Nil)) { (store, _) =>
-      store.bytes.write(m.full.toKey, ByteVector(bytes)) >> store.bytes.read(m.full.toKey) } must beOkValue(ByteVector(bytes)) )
+  def checksum = propNoShrink((m: KeyEntry, st: StoreTemporary) => for {
+    s <- st.store: RIO[Store[RIO]]
+    _ <- writeKeys(Keys(m :: Nil), s): RIO[Unit]
+    r <- s.checksum(m.full.toKey, MD5): RIO[Checksum]
+  } yield r ==== Checksum.string(m.value.toString, MD5))
 
-  def strings =
-    propNoShrink((m: KeyEntry, s: String) => run(Keys(m :: Nil)) { (store, _) =>
-      store.strings.write(m.full.toKey, s, Codec.UTF8) >> store.strings.read(m.full.toKey, Codec.UTF8) } must beOkValue(s) )
+  def bytes = propNoShrink((m: KeyEntry, bytes: Array[Byte], st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.bytes.write(m.full.toKey, ByteVector(bytes))
+    r <- s.bytes.read(m.full.toKey)
+  } yield r ==== ByteVector(bytes))
 
-  def utf8Strings =
-    propNoShrink((m: KeyEntry, s: String) => run(Keys(m :: Nil)) { (store, _) =>
-      store.utf8.write(m.full.toKey, s) >> store.utf8.read(m.full.toKey) } must beOkValue(s) )
+  def strings = propNoShrink((m: KeyEntry, str: String, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.strings.write(m.full.toKey, str, Codec.UTF8)
+    r <- s.strings.read(m.full.toKey, Codec.UTF8)
+  } yield r ==== str)
 
-  def lines =
-    propNoShrink((m: KeyEntry, s: List[Int]) => run(Keys(m :: Nil)) { (store, _) =>
-      store.lines.write(m.full.toKey, s.map(_.toString), Codec.UTF8) >> store.lines.read(m.full.toKey, Codec.UTF8)  }must beOkValue(s.map(_.toString)) )
+  def utf8Strings = propNoShrink((m: KeyEntry, str: String, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.utf8.write(m.full.toKey, str)
+    r <- s.utf8.read(m.full.toKey)
+  } yield r ==== str)
 
-  def utf8Lines =
-    propNoShrink((m: KeyEntry, s: List[Int]) => run(Keys(m :: Nil)) { (store, _) =>
-      store.linesUtf8.write(m.full.toKey, s.map(_.toString)) >> store.linesUtf8.read(m.full.toKey) } must beOkValue(s.map(_.toString)) )
+  def lines = propNoShrink((m: KeyEntry, v: List[Int], st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.lines.write(m.full.toKey, v.map(_.toString), Codec.UTF8)
+    r <- s.lines.read(m.full.toKey, Codec.UTF8)
+  } yield r ==== v.map(_.toString))
+
+  def utf8Lines = propNoShrink((m: KeyEntry, v: List[Int], st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.linesUtf8.write(m.full.toKey, v.map(_.toString))
+    r <- s.linesUtf8.read(m.full.toKey)
+  } yield r ==== v.map(_.toString))
+
+  def inputStream = propNoShrink((m: KeyEntry, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    b = new StringBuilder
+    _ <- s.unsafe.withInputStream(m.full.toKey)(Streams.read(_).map(b.append(_)).void)
+  } yield b.toString ==== m.value.toString)
+
+  def outputStream = propNoShrink((m: KeyEntry, data: String, st: StoreTemporary) => for {
+    s <- st.store
+    _ <- s.unsafe.withOutputStream(m.full.toKey)(o => Streams.write(o, data))
+    d <- s.utf8.read(m.full.toKey)
+  } yield d ==== data)
 
   implicit class ToKey(s: String) {
     def toKey: Key = Key.unsafe(s)

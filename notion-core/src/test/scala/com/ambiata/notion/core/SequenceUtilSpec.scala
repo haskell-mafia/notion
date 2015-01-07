@@ -2,11 +2,13 @@ package com.ambiata.notion.core
 
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
-import com.ambiata.mundane.io.TemporaryFilePath._
+import com.ambiata.mundane.io.Arbitraries._
 import com.ambiata.mundane.testing.RIOMatcher._
-import com.ambiata.poacher.hdfs.Hdfs
+import com.ambiata.poacher.hdfs._
+import com.ambiata.poacher.hdfs.Arbitraries._
 import com.ambiata.saws.core._
-import com.ambiata.saws.s3.TemporaryS3._
+import com.ambiata.saws.s3._
+import com.ambiata.saws.testing.Arbitraries._
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -26,20 +28,20 @@ class SequenceUtilSpec extends Specification with ScalaCheck { def is = s2"""
   val conf = new Configuration
   val client = Clients.s3
 
-  def local = prop((list: List[String]) => {
-    withFilePath(f => {
-      runTest(LocalLocation(f.path), list, Files.exists(f))
-    }) must beOkValue(true -> list) })
+  def local = prop((list: List[String], local: LocalTemporary) => for {
+    f <- local.file
+    r <- runTest(LocalLocation(f.path), list, Files.exists(f))
+  } yield r ==== true -> list)
 
-  def s3 = prop((list: List[String]) => {
-    withS3Address(s3 => {
-      runTest(S3Location(s3.bucket, s3.key), list, s3.exists.execute(client))
-    }) must beOkValue(true -> list) }).set(minTestsOk = 10)
+  def s3 = prop((list: List[String], s3: S3Temporary) => for {
+    a <- s3.address.execute(client)
+    r <- runTest(S3Location(a.bucket, a.key), list, a.exists.execute(client))
+  } yield r ==== true -> list)
 
-  def hdfs = prop((list: List[String] ) => {
-    withFilePath(f => {
-      runTest(HdfsLocation(f.path), list, Hdfs.exists(new Path(f.path)).run(conf))
-    }) must beOkValue(true -> list) })
+  def hdfs = prop((list: List[String], hdfs: HdfsTemporary) => for {
+    p <- hdfs.path.run(conf)
+    r <- runTest(HdfsLocation(p.toString), list, Hdfs.exists(p).run(conf))
+  } yield r ==== true -> list)
 
   def runTest(loc: Location, l: List[String], exists: RIO[Boolean]): RIO[(Boolean, List[String])]  = for {
     _ <- SequenceUtil.writeBytes(loc, conf, client, None){
