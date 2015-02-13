@@ -30,9 +30,9 @@ object depend {
 
   def poacher(version: String) =
     if (version.contains("cdh4"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150107025157-1ad2936" % "compile->compile;test->test") ++ hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150213004217-d7d3891" % "compile->compile;test->test") ++ hadoop(version)
     else if (version.contains("cdh5"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150107025913-1ad2936" % "compile->compile;test->test") ++  hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150213004209-d7d3891" % "compile->compile;test->test") ++  hadoop(version)
     else
       sys.error(s"unsupported poacher version, can not build for $version")
 
