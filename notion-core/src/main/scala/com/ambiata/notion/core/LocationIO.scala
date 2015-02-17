@@ -76,6 +76,26 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
         Hdfs.readWith(new Path(path), f).run(configuration)
     }
 
+  /** write to a given location, using an OutputStream */
+  def writeUnsafe(location: Location)(f: java.io.OutputStream => RIO[Unit]): RIO[Unit] =
+    location match {
+      case l @ LocalLocation(_) =>
+        RIO.safe(l.dirPath.dirname.toFile.mkdirs) >>
+        RIO.using(l.filePath.toOutputStream)(f)
+
+      case HdfsLocation(path) =>
+        Hdfs.writeWith(new Path(path), f).run(configuration)
+
+      case S3Location(bucket, key) =>
+        for {
+          tmpFile <- LocalTemporary.random.fileWithParent
+          out     <- tmpFile.toOutputStream
+          _       <- RIO.using(RIO.ok(out))(f)
+          in      <- tmpFile.toInputStream
+          _       <- RIO.using(RIO.ok(in)) { i => S3Address(bucket, key).putStream(i).execute(s3Client) }
+        } yield ()
+    }
+
   def streamLinesUTF8[A](location: Location, empty: => A)(f: (String, A) => A): RIO[A] =
     RIO.io(empty).flatMap { s =>
       var state = s
