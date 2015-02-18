@@ -1,5 +1,6 @@
 package com.ambiata.notion.core
 
+import com.ambiata.mundane.control.RIO
 import org.specs2._
 import org.specs2.execute.AsResult
 import org.specs2.matcher._
@@ -10,21 +11,23 @@ import com.ambiata.disorder._
 import com.ambiata.saws.core.Clients
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing.RIOMatcher._
+import java.io._
 
 import scalaz._, Scalaz._
 
-class LocationIOSpec extends Specification  with ScalaCheck { def is = s2"""
+class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
  The LocationIO class provides functions to read/write/query locations on different systems
 
-   isDirectory             $isDirectory
-   isFile                  $isFile
-   deleteAll               $deleteAll
-   delete                  $delete
-   read / write lines      $readWriteLines
-   stream lines            $streamLines
-   list                    $list
-   exists                  $exists
+   isDirectory               $isDirectory
+   isFile                    $isFile
+   deleteAll                 $deleteAll
+   delete                    $delete
+   read / write lines        $readWriteLines
+   read / write unsafe       $readWriteUnsafe
+   stream lines              $streamLines
+   list                      $list
+   exists                    $exists
 
 """
   override implicit def defaultParameters: Parameters =
@@ -72,6 +75,16 @@ class LocationIOSpec extends Specification  with ScalaCheck { def is = s2"""
       r <- i.readLines(p)
     } yield r ==== linesWithoutSpaces
   })
+
+  def readWriteUnsafe = prop { (loc: LocationTemporary, text: String) =>
+    var read: String = null
+    for {
+      p <- loc.location
+      i <- loc.io
+      _ <- i.writeUnsafe(p)(out => RIO.io(new DataOutputStream(out).writeUTF(text)))
+      r <- i.readUnsafe(p)(in => RIO.io(read = new DataInputStream(in).readUTF))
+    } yield read ==== text
+  }
 
   def streamLines = prop((loc: LocationTemporary, lines: List[String]) => {
     val linesWithoutSpaces = lines.map(_.replaceAll("\\s", ""))
