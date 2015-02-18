@@ -91,8 +91,7 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
           tmpFile <- LocalTemporary.random.fileWithParent
           out     <- tmpFile.toOutputStream
           _       <- RIO.using(RIO.ok(out))(f)
-          in      <- tmpFile.toInputStream
-          _       <- RIO.using(RIO.ok(in)) { i => S3Address(bucket, key).putStream(i).execute(s3Client) }
+          _       <- S3Address(bucket, key).putFile(tmpFile).execute(s3Client)
         } yield ()
     }
 
