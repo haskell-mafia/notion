@@ -1,0 +1,6 @@
+#!/bin/sh -eu
+
+# brew install thrift
+
+DIR=$(dirname $0)/../../..
+thrift -r -out ${DIR}/src/main/java/ --gen java ${DIR}/src/main/thrift/distcopy.thrift
