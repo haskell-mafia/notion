@@ -62,7 +62,6 @@ object build extends Build {
       depend.mundane ++
       depend.scalaz ++
       depend.specs2 ++
-      depend.argonaut ++
       depend.poacher(version.value) ++
       depend.hadoop(version.value) ++
       depend.disorder)
