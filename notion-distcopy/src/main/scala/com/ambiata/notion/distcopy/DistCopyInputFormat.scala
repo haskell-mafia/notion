@@ -4,13 +4,11 @@ package com.ambiata.notion.distcopy
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control.RIO
 import com.ambiata.poacher.hdfs.Hdfs
-import com.ambiata.poacher.mr.{DistCache, MrContext}
+import com.ambiata.poacher.mr.{DistCache, MrContext, ThriftCache}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.NullWritable
 import org.apache.hadoop.mapreduce._
 import com.ambiata.mundane.io._
-
-import argonaut.{Context => _, _}, Argonaut._
 
 import scalaz._, Scalaz._
 
@@ -22,8 +20,8 @@ import scala.collection.JavaConverters._
  */
 class DistCopyInputFormat extends InputFormat[NullWritable, Mapping] {
   def getSplits(context: JobContext): java.util.List[InputSplit] = {
-    val workloads = context.getConfiguration.get("notion.dist-copy.workloads").decodeOption[Workloads].getOrElse(
-      sys.error("notion dist-copy failed - `notion.dist-copy.workloads` not set"))
+    val ctx = MrContext.fromConfiguration(context.getConfiguration)
+    val workloads = DistCopyInputFormat.take(ctx).getOrElse(sys.error("notion dist-copy failed - `notion.dist-copy.workloads` not set"))
 
     workloads.workloads.map(workload =>
       new S3Split(workload): InputSplit
@@ -33,7 +31,9 @@ class DistCopyInputFormat extends InputFormat[NullWritable, Mapping] {
   def createRecordReader(inputSplit: InputSplit, context: TaskAttemptContext): RecordReader[NullWritable, Mapping] = {
     val split: S3Split = inputSplit.asInstanceOf[S3Split]
     val ctx = MrContext.fromConfiguration(context.getConfiguration)
-    val mappings = ctx.distCache.pop(context.getConfiguration, DistCopyInputFormat.MappingKey, bytes => new String(bytes, "UTF-8").decodeEither[Mappings])
+    val thrift: MappingsLookup = new MappingsLookup
+    ctx.thriftCache.pop(context.getConfiguration, DistCopyInputFormat.MappingKey, thrift)
+    val mappings: Mappings = Mappings.fromThrift(thrift)
     new RecordReader[NullWritable, Mapping] {
       var index = -1
 
@@ -64,16 +64,22 @@ class DistCopyInputFormat extends InputFormat[NullWritable, Mapping] {
 }
 
 object DistCopyInputFormat {
-  val MappingKey = DistCache.Key("notion.dist-copy.sync.mappings")
+  val MappingKey = ThriftCache.Key("notion.dist-copy.sync.mappings")
+
+  /*
+   This code is terrible, but a necessary evil in this instance. With the memory
+   constraints on the client, its cheaper to hold the Workloads im memory rather
+   than serializer and de-serializer them.
+   */
+  private val local = new java.util.concurrent.ConcurrentHashMap[String, Workloads]
+
+  def take(context: MrContext): Option[Workloads] =
+    Option(local.remove(context.id.value))
 
   def setMappings(j: Job, ctx: MrContext, client: AmazonS3Client, mappings: Mappings, splitNumber: Int): RIO[Unit] = for {
     w <- calc(mappings, splitNumber, client, j.getConfiguration)
-    _ <- RIO.safe[Unit] {
-      ctx.distCache.push(j, MappingKey, mappings.asJson.nospaces.getBytes("UTF-8"))
-    }
-    _ <- RIO.safe[Unit] {
-      j.getConfiguration.set("notion.dist-copy.workloads", w.asJson.nospaces)
-    }
+    _ <- RIO.safe[Unit](ctx.thriftCache.push(j, MappingKey, mappings.toThrift))
+    _ = local.put(ctx.id.value, w)
   } yield ()
 
   def size(z: (Mapping, Int), client: AmazonS3Client, conf: Configuration): RIO[Long] = z._1 match {
