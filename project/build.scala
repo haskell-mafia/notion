@@ -64,7 +64,8 @@ object build extends Build {
       depend.specs2 ++
       depend.argonaut ++
       depend.poacher(version.value) ++
-      depend.hadoop(version.value))
+      depend.hadoop(version.value) ++
+      depend.disorder)
   )
   .dependsOn(core)
 
