@@ -13,14 +13,14 @@ object depend {
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
 
-  val sawsVersion = "1.2.1-20150308222553-39a4ef8"
+  val sawsVersion = "1.2.1-20150309015907-d64c646"
   val saws      = Seq("com.ambiata"          %% "saws-s3"            % sawsVersion excludeAll(
     ExclusionRule(organization = "org.specs2"),
     ExclusionRule(organization = "javax.mail"),
     ExclusionRule(organization = "com.owtelse.codec")
   )) ++           Seq("com.ambiata"          %% "saws-testing"       % sawsVersion % "test->test")
 
-  val mundaneVersion = "1.2.1-20150304004528-f5d4c44"
+  val mundaneVersion = "1.2.1-20150309015053-827ae37"
   val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
                       "com.ambiata"          %% c                 % mundaneVersion) ++
                   Seq("com.ambiata"          %% "mundane-io"      % mundaneVersion % "test->test") ++
@@ -30,9 +30,9 @@ object depend {
 
   def poacher(version: String) =
     if (version.contains("cdh4"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150308222415-9927c9c" % "compile->compile;test->test") ++ hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150309015835-d93de08" % "compile->compile;test->test") ++ hadoop(version)
     else if (version.contains("cdh5"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150308222411-9927c9c" % "compile->compile;test->test") ++ hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150309015833-d93de08" % "compile->compile;test->test") ++ hadoop(version)
     else
       sys.error(s"unsupported poacher version, can not build for $version")
 
