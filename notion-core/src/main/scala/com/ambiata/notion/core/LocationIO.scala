@@ -22,15 +22,19 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
 
   /** @return the (recursive) list of all the locations contained in `location` */
   def list(location: Location): RIO[List[Location]] = location match {
-    case l @ LocalLocation(path) =>
-      Directories.list(l.dirPath).map(_.map(f => LocalLocation(f.path)))
-
-    case s @ S3Location(bucket, key) =>
-      S3Pattern(bucket, key).listKeys.execute(s3Client).map(_.map(k => S3Location(bucket,  k)))
-
-    case h @ HdfsLocation(path) =>
-      Hdfs.globFilesRecursively(new Path(path)).run(configuration).map(_.map(p => HdfsLocation(p.toString)))
+    case l @ LocalLocation(_) => listLocal(l).map(identity)
+    case s @ S3Location(_, _) => listS3(s).map(identity)
+    case h @ HdfsLocation(_)  => listHdfs(h).map(identity)
   }
+
+  def listLocal(local: LocalLocation): RIO[List[LocalLocation]] =
+    Directories.list(local.dirPath).map(_.map(f => LocalLocation(f.path)))
+
+  def listHdfs(hdfs: HdfsLocation): RIO[List[HdfsLocation]] =
+    Hdfs.globFilesRecursively(new Path(hdfs.path)).run(configuration).map(_.map(p => HdfsLocation(p.toString)))
+
+  def listS3(s3: S3Location): RIO[List[S3Location]] =
+    S3Pattern(s3.bucket, s3.key).listKeys.execute(s3Client).map(_.map(k => S3Location(s3.bucket,  k)))
 
   /** @return true if the location exists */
   def exists(location: Location): RIO[Boolean] = location match {
@@ -67,23 +71,20 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
       }.run(configuration)
   }
 
-  /** @return the content of the file present at `location` if there is one */
-  def readUtf8(location: Location): RIO[String] = location match {
-    case l @ LocalLocation(path)     => Files.read(l.filePath)
+  /** @return the content of the file present at `location` as a UTF-8 string if there is one */
+  def readUtf8(location: Location): RIO[String] =
+    readBytes(location).map(new String(_, "UTF-8"))
+
+  /** @return the content of the file present at `location` as an array of bytes if there is one */
+  def readBytes(location: Location): RIO[Array[Byte]] = location match {
+    case l @ LocalLocation(path) => Files.readBytes(l.filePath)
     case s @ S3Location(bucket, key) =>
       S3Pattern(bucket, key).determine.flatMap { prefixOrAddress =>
         val asAddress = prefixOrAddress.flatMap(_.swap.toOption)
-        asAddress.map(_.getBytes.map(new String(_, "UTF-8"))).getOrElse(S3Action.fail(s"There is no file at ${location.render}"))
+        asAddress.map(_.getBytes).getOrElse(S3Action.fail(s"There is no file at ${location.render}"))
       }.execute(s3Client)
 
-    case h @ HdfsLocation(path)      =>
-      Hdfs.isDirectory(new Path(path)).flatMap { isDirectory =>
-        if (isDirectory)
-          Hdfs.globFilesRecursively(new Path(path)).filterHidden
-            .flatMap(_.traverseU(Hdfs.readContentAsString).map(_.mkString))
-        else
-          Hdfs.readContentAsString(new Path(path))
-      }.run(configuration)
+    case h @ HdfsLocation(path) => Hdfs.readBytes(new Path(path)).run(configuration)
   }
 
   def readUnsafe(location: Location)(f: java.io.InputStream => RIO[Unit]): RIO[Unit] =
@@ -151,6 +152,12 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     case h @ HdfsLocation(path)      => Hdfs.writeWith(new Path(path), out => Streams.write(out, string)).run(configuration)
   }
 
+  def writeBytes(location: Location, bytes: Array[Byte]): RIO[Unit] = location match {
+    case l @ LocalLocation(path)     => Files.writeBytes(l.filePath, bytes)
+    case s @ S3Location(bucket, key) => S3Address(bucket, key).putBytes(bytes).execute(s3Client).void
+    case h @ HdfsLocation(path)      => Hdfs.writeWith(new Path(path), out => Streams.writeBytes(out, bytes)).run(configuration)
+  }
+
   def deleteAll(location: Location): RIO[Unit] = location match {
     case l @ LocalLocation(path)     => Directories.delete(l.dirPath).void
     case s @ S3Location(bucket, key) => S3Prefix(bucket, key).delete.execute(s3Client)
@@ -191,6 +198,27 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
   /** pipe bytes from one location to another */
   def pipe(from: Location, to: Location): RIO[Unit] =
     readUnsafe(from)(in => writeUnsafe(to)(out => Streams.pipe(in, out)))
+
+  /**
+   * copy files from one location to another.
+   *
+   * if the first location is a directory, copy all the files in that directory to the other location (must be a directory as well)
+   * the copy is *not* recursive.
+   *
+   * Note: in the case of a large copy from S3 to Hdfs or from Hdfs to S3, a distcopy should be done instead
+   * see SynchronizedInputsOutputs
+   */
+  def copyFiles(from: Location, to: Location, overwrite: Boolean): RIO[Unit] =
+    isDirectory(from) >>= { isDirectory =>
+      if (isDirectory)
+        list(from).flatMap(_.traverseU {
+          case f @ LocalLocation(_) => copyFile(f, to </> f.filePath, overwrite)
+          case f @ HdfsLocation(_)  => copyFile(f, to </> f.filePath, overwrite)
+          case s @ S3Location(_, k) => copyFile(s, to </> FilePath.unsafe(k), overwrite)
+        }).void
+      else
+        copyFile(from, to, overwrite)
+    }
 
   /** get the first lines of a file */
   def head(location: Location, numberOfLines: Int): RIO[List[String]] = {
