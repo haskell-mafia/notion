@@ -1,6 +1,7 @@
 package com.ambiata.notion.core
 
 import java.io.File
+import java.security.MessageDigest
 import com.ambiata.saws.core.{S3Action, Clients}
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
@@ -8,9 +9,10 @@ import com.ambiata.mundane.data.Lists
 import com.ambiata.mundane.io._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
+import org.apache.commons.codec.binary.Base64
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-
+import collection.mutable.Queue
 import scalaz._, Scalaz._, effect.IO, effect.Effect._
 
 /**
@@ -164,13 +166,15 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     }.map(_.leftMap(_.toList))
   }
 
+  def reduceLinesUTF8[T](location: Location, reducer: LineReducer[T]): RIO[T] =
+    streamLinesUTF8[reducer.S](location, reducer.init)((line, s) => reducer.reduce(line, s)).map(s => reducer.finalise(s))
+
   /** get the last line of a file */
   def tail(location: Location, numberOfLines: Int): RIO[List[String]] =
-    tailAndLinesNumber(location, numberOfLines).map(_._1)
+    reduceLinesUTF8(location, LineReducer.tail(numberOfLines))
 
   /** get the last line of a file */
   def lastLine(location: Location): RIO[Option[String]] =
     tail(location, numberOfLines = 1).map(_.lastOption)
-
 
 }

@@ -2,13 +2,8 @@ package com.ambiata.notion.core
 
 import com.ambiata.mundane.control.RIO
 import org.specs2._
-import org.specs2.execute.AsResult
 import org.specs2.matcher._
-import org.apache.hadoop.conf.Configuration
-import org.specs2.specification.FixtureExample
-
 import com.ambiata.disorder._
-import com.ambiata.saws.core.Clients
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing.RIOMatcher._
 import java.io._
@@ -36,6 +31,8 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
    the last lines of a file and the number of lines     $fileTailAndLinesNumber
    head of a file with all line numbers <==> readLines  $fileHeadAllIsReadLines
    tail of a file with all line numbers <==> readLines  $fileTailAllIsReadLines
+   sha1 of a file <==> mundane.Checksum("SHA1")         $sha1LikeMundane
+   linecount of a file <==> mundane.LineCount           $linecountLikeMundane
 
 """
   override implicit def defaultParameters: Parameters =
@@ -187,6 +184,30 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       tail <- i.tail(l, lines.size)
       all  <- Files.readLines(path, "UTF-8")
     } yield tail must_== all
+  }.set(maxSize = 10)
+
+  def sha1LikeMundane = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
+    val lines = (0 to linesNumber.value).toList.map("line"+_)
+    for {
+      path <- LocalTemporary(loc.path).file
+      l    =  LocalLocation(path.path)
+      i    <- loc.io
+      _    <- i.writeUtf8Lines(l, lines)
+      s1   <- i.reduceLinesUTF8(l, LineReducer.sha1)
+      s2   <- Checksum.file(path, SHA1).map(_.hash)
+    } yield s1 must_== s2
+  }.set(maxSize = 10)
+
+  def linecountLikeMundane = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
+    val lines = (0 to linesNumber.value).toList.map("line"+_)
+    for {
+      path <- LocalTemporary(loc.path).file
+      l    =  LocalLocation(path.path)
+      i    <- loc.io
+      _    <- i.writeUtf8Lines(l, lines)
+      n1   <- i.reduceLinesUTF8(l, LineReducer.linesNumber)
+      n2   <- RIO.fromIO(LineCount.count(path.toFile).map(_.count))
+    } yield n1 must_== n2
   }.set(maxSize = 10)
 
   /**
