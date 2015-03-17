@@ -26,7 +26,7 @@ object depend {
                   Seq("com.ambiata"          %% "mundane-io"      % mundaneVersion % "test->test") ++
                   Seq("com.ambiata"          %% "mundane-testing" % mundaneVersion % "test")
 
-  val disorder =  Seq("com.ambiata"          %% "disorder"        % "0.0.1-20150219021345-bfcf0db" % "test")
+  val disorder =  Seq("com.ambiata"          %% "disorder"        % "0.0.1-20150317050225-9c1f81e" % "test")
 
   def poacher(version: String) =
     if (version.contains("cdh4"))
