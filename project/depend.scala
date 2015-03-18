@@ -20,8 +20,8 @@ object depend {
     ExclusionRule(organization = "com.owtelse.codec")
   )) ++           Seq("com.ambiata"          %% "saws-testing"       % sawsVersion % "test->test")
 
-  val mundaneVersion = "1.2.1-20150310040336-0ef1d8c"
-  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
+  val mundaneVersion = "1.2.1-20150323032355-3271ed9"
+  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-bytes").map(c =>
                       "com.ambiata"          %% c                 % mundaneVersion) ++
                   Seq("com.ambiata"          %% "mundane-io"      % mundaneVersion % "test->test") ++
                   Seq("com.ambiata"          %% "mundane-testing" % mundaneVersion % "test")
