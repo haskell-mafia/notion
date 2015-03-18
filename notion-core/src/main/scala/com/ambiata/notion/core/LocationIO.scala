@@ -1,6 +1,7 @@
 package com.ambiata.notion.core
 
 import java.io.File
+import java.security.MessageDigest
 import com.ambiata.saws.core.{S3Action, Clients}
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
@@ -8,9 +9,10 @@ import com.ambiata.mundane.data.Lists
 import com.ambiata.mundane.io._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
+import org.apache.commons.codec.binary.Base64
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-
+import collection.mutable.Queue
 import scalaz._, Scalaz._, effect.IO, effect.Effect._
 
 /**
@@ -128,5 +130,51 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     case s @ S3Location(bucket, key) => S3Address(bucket, key).delete.execute(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.delete(new Path(path)).run(configuration)
   }
+
+  /** get the first lines of a file */
+  def head(location: Location, numberOfLines: Int): RIO[List[String]] = {
+    val lines: collection.mutable.ListBuffer[String] = new collection.mutable.ListBuffer[String]
+    readUnsafe(location) { in =>
+      RIO.io(new java.io.BufferedReader(new java.io.InputStreamReader(in, "UTF-8"))).map { reader =>
+        var line = reader.readLine
+        while (line != null && lines.size < numberOfLines) {
+          lines.append(line)
+          line = reader.readLine
+        }
+      }
+    }.map(_ => lines.toList)
+  }
+
+  /** get the first line of a file */
+  def firstLine(location: Location): RIO[Option[String]] =
+    head(location, numberOfLines = 1).map(_.headOption)
+
+  /**
+   * count the number of lines in a file and get the last one
+   * This is done in one pass to avoid parsing the file twice when both the lines number and
+   * the tail are required
+   */
+  def tailAndLinesNumber(location: Location, numberOfLines: Int): RIO[(List[String], Int)] = {
+    def addLine(lines: collection.mutable.Queue[String], line: String): collection.mutable.Queue[String] = {
+      lines.enqueue(line)
+      if (lines.size > numberOfLines && !lines.isEmpty) lines.dequeue()
+      lines
+    }
+
+    streamLinesUTF8[(collection.mutable.Queue[String], Int)](location, (new collection.mutable.Queue[String], 0)) {
+      case (line, (lines, number)) => (addLine(lines, line), number + 1)
+    }.map(_.leftMap(_.toList))
+  }
+
+  def reduceLinesUTF8[T](location: Location, reducer: LineReducer[T]): RIO[T] =
+    streamLinesUTF8[reducer.S](location, reducer.init)((line, s) => reducer.reduce(line, s)).map(s => reducer.finalise(s))
+
+  /** get the last line of a file */
+  def tail(location: Location, numberOfLines: Int): RIO[List[String]] =
+    reduceLinesUTF8(location, LineReducer.tail(numberOfLines))
+
+  /** get the last line of a file */
+  def lastLine(location: Location): RIO[Option[String]] =
+    tail(location, numberOfLines = 1).map(_.lastOption)
 
 }
