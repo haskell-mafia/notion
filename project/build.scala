@@ -40,7 +40,8 @@ object build extends Build {
     id = "core"
     , base = file("notion-core")
     , settings = standardSettings ++ lib("core") ++ Seq[Settings](
-      name := "notion-core"
+      name := "notion-core",
+      addCompilerPlugin("org.spire-math" % "kind-projector_2.11" % "0.5.2")
     ) ++ Seq[Settings](libraryDependencies ++=
       depend.scalaz  ++
       depend.mundane ++

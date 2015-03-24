@@ -48,6 +48,7 @@ object depend {
 
   val argonaut    = Seq("io.argonaut"        %% "argonaut"     % "6.1-M4")
 
+  // for scala 2.11
   val resolvers = Seq(
     Resolver.sonatypeRepo("releases")
   , Resolver.sonatypeRepo("snapshots")
@@ -55,7 +56,8 @@ object depend {
   , Resolver.typesafeRepo("releases")
   , "cloudera" at "https://repository.cloudera.com/content/repositories/releases"
   , Resolver.url("ambiata-oss", new URL("https://ambiata-oss.s3.amazonaws.com"))(Resolver.ivyStylePatterns)
-  , "Scalaz Bintray Repo"  at "http://dl.bintray.com/scalaz/releases"
-  , "spray.io"             at "http://repo.spray.io"
+  , "bintray/scalaz"  at "http://dl.bintray.com/scalaz/releases"
+  , "bintray/non"     at "http://dl.bintray.com/non/maven"
+  , "spray.io"        at "http://repo.spray.io"
   )
 }
