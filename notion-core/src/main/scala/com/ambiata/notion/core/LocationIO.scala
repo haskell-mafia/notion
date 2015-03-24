@@ -114,10 +114,11 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     RIO.io(empty).flatMap { s =>
       var state = s
       readUnsafe(location) { in => RIO.io {
-        val buffer = Buffer.wrapArray(Array.ofDim[Byte](bufferSize), 0, bufferSize)
+        var buffer = Buffer.wrapArray(Array.ofDim[Byte](bufferSize), 0, bufferSize)
         var length = 0
         while ({ length = in.read(buffer.bytes, buffer.offset, bufferSize); length != -1 }) {
-          state = f(Buffer.allocate(buffer, length), state)
+          buffer = Buffer.allocate(buffer, length)
+          state = f(buffer, state)
         }
       }}.as(state)
     }
