@@ -8,6 +8,7 @@ import com.ambiata.saws.s3._
 import com.ambiata.saws.testing.Arbitraries._
 
 import org.specs2._
+import org.specs2.matcher.Parameters
 
 
 class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s2"""
@@ -53,5 +54,9 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
         , DownloadMapping(b, h)
         , DownloadMapping(c, h)
       )), 2, s3Client, q)
-  } yield r ==== Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2))))).set(minTestsOk = 20)
+  } yield r ==== Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2)))))
+
+  override implicit def defaultParameters: Parameters =
+    new Parameters(minTestsOk = 10)
+
 }

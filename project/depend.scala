@@ -20,8 +20,8 @@ object depend {
     ExclusionRule(organization = "com.owtelse.codec")
   )) ++           Seq("com.ambiata"          %% "saws-testing"       % sawsVersion % "test->test")
 
-  val mundaneVersion = "1.2.1-20150310040336-0ef1d8c"
-  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse").map(c =>
+  val mundaneVersion = "1.2.1-20150323032355-3271ed9"
+  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-bytes").map(c =>
                       "com.ambiata"          %% c                 % mundaneVersion) ++
                   Seq("com.ambiata"          %% "mundane-io"      % mundaneVersion % "test->test") ++
                   Seq("com.ambiata"          %% "mundane-testing" % mundaneVersion % "test")
@@ -48,6 +48,7 @@ object depend {
 
   val argonaut    = Seq("io.argonaut"        %% "argonaut"     % "6.1-M4")
 
+  // for scala 2.11
   val resolvers = Seq(
     Resolver.sonatypeRepo("releases")
   , Resolver.sonatypeRepo("snapshots")
@@ -55,7 +56,8 @@ object depend {
   , Resolver.typesafeRepo("releases")
   , "cloudera" at "https://repository.cloudera.com/content/repositories/releases"
   , Resolver.url("ambiata-oss", new URL("https://ambiata-oss.s3.amazonaws.com"))(Resolver.ivyStylePatterns)
-  , "Scalaz Bintray Repo"  at "http://dl.bintray.com/scalaz/releases"
-  , "spray.io"             at "http://repo.spray.io"
+  , "bintray/scalaz"  at "http://dl.bintray.com/scalaz/releases"
+  , "bintray/non"     at "http://dl.bintray.com/non/maven"
+  , "spray.io"        at "http://repo.spray.io"
   )
 }

@@ -1,6 +1,9 @@
 package com.ambiata.notion.core
 
+import java.security.MessageDigest
+
 import com.ambiata.mundane.control.RIO
+import com.ambiata.mundane.data.Lists
 import org.specs2._
 import org.specs2.matcher._
 import com.ambiata.disorder._
@@ -36,7 +39,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
 """
   override implicit def defaultParameters: Parameters =
-    new Parameters(minTestsOk = 3, workers = 3)
+    new Parameters(minTestsOk = 3, workers = 3, maxSize = 10)
 
   def isDirectory = prop((loc: LocationTemporary, id: Ident, data: String) => for {
     p <- loc.location
@@ -124,7 +127,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       i          <- loc.io
       line       <- i.firstLine(l)
     } yield line must_== lines.headOption
-  }.set(maxSize = 10)
+  }
 
   def fileLast = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
     for {
@@ -133,7 +136,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       i          <- loc.io
       line       <- i.lastLine(l)
     } yield line must_== lines.lastOption
-  }.set(maxSize = 10)
+  }
 
   def fileHead = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall, requestedLinesNumber: NaturalIntSmall) =>
     for {
@@ -142,7 +145,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       i          <- loc.io
       head       <- i.head(l, requestedLinesNumber.value)
     } yield head must_== lines.take(requestedLinesNumber.value)
-  }.set(maxSize = 10)
+  }
 
   def fileTail = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall, requestedLinesNumber: NaturalIntSmall) =>
     for {
@@ -151,7 +154,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       i          <- loc.io
       tail       <- i.tail(l, requestedLinesNumber.value)
     } yield tail must_== lines.drop(lines.size - requestedLinesNumber.value)
-  }.set(maxSize = 10)
+  }
 
   def fileTailAndLinesNumber = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall, requestedLinesNumber: NaturalIntSmall) =>
     for {
@@ -160,7 +163,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       i     <- loc.io
       tailAndNb <- i.tailAndLinesNumber(l, requestedLinesNumber.value)
     } yield tailAndNb._2 must_== linesNumber.value
-  }.set(maxSize = 10)
+  }
 
   def fileHeadAllIsReadLines = prop { (loc: LocationTemporary, linesNumber: PositiveIntSmall) =>
     val lines = (1 to linesNumber.value).toList.map("line"+_)
@@ -172,7 +175,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       head <- i.head(l, lines.size)
       all  <- Files.readLines(path, "UTF-8")
     } yield head must_== all
-  }.set(maxSize = 10)
+  }
 
   def fileTailAllIsReadLines = prop { (loc: LocationTemporary, linesNumber: PositiveIntSmall) =>
     val lines = (1 to linesNumber.value).toList.map("line"+_)
@@ -184,19 +187,19 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       tail <- i.tail(l, lines.size)
       all  <- Files.readLines(path, "UTF-8")
     } yield tail must_== all
-  }.set(maxSize = 10)
+  }
 
-  def sha1LikeMundane = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
-    val lines = (0 to linesNumber.value).toList.map("line"+_)
+  def sha1LikeMundane = prop { (loc: LocationTemporary, linesNumber: PositiveIntSmall) =>
+    val lines = (1 to linesNumber.value).toList.map("line"+_)
     for {
       path <- LocalTemporary(loc.path).file
       l    =  LocalLocation(path.path)
       i    <- loc.io
       _    <- i.writeUtf8Lines(l, lines)
-      s1   <- i.reduceLinesUTF8(l, LineReducer.sha1)
+      s1   <- i.reduceBytes(l, BytesReducer.sha1)
       s2   <- Checksum.file(path, SHA1).map(_.hash)
-    } yield s1 must_== s2
-  }.set(maxSize = 10)
+    } yield s1 ==== s2
+  }
 
   def linecountLikeMundane = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
     val lines = (0 to linesNumber.value).toList.map("line"+_)
@@ -208,7 +211,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       n1   <- i.reduceLinesUTF8(l, LineReducer.linesNumber)
       n2   <- RIO.fromIO(LineCount.count(path.toFile).map(_.count))
     } yield n1 must_== n2
-  }.set(maxSize = 10)
+  }
 
   /**
    * HELPERS

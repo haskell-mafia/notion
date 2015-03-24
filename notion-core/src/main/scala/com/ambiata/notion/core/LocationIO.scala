@@ -1,18 +1,17 @@
 package com.ambiata.notion.core
 
-import java.io.File
-import java.security.MessageDigest
 import com.ambiata.saws.core.{S3Action, Clients}
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.data.Lists
 import com.ambiata.mundane.io._
+import com.ambiata.mundane.bytes.Buffer
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
-import org.apache.commons.codec.binary.Base64
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import collection.mutable.Queue
+import java.io.File
+import Reducer._
 import scalaz._, Scalaz._, effect.IO, effect.Effect._
 
 /**
@@ -110,6 +109,20 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
       }}.as(state)
     }
 
+  /** read a file as a stream of bytes and compute some state value */
+  def streamBytes[A](location: Location, empty: => A, bufferSize: Int = 4096)(f: (Buffer, A) => A): RIO[A] =
+    RIO.io(empty).flatMap { s =>
+      var state = s
+      readUnsafe(location) { in => RIO.io {
+        var buffer = Buffer.wrapArray(Array.ofDim[Byte](bufferSize), 0, bufferSize)
+        var length = 0
+        while ({ length = in.read(buffer.bytes, buffer.offset, bufferSize); length != -1 }) {
+          buffer = Buffer.allocate(buffer, length)
+          state = f(buffer, state)
+        }
+      }}.as(state)
+    }
+
   def writeUtf8Lines(location: Location, lines: List[String]): RIO[Unit] =
     writeUtf8(location, Lists.prepareForFile(lines))
 
@@ -169,6 +182,9 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
   def reduceLinesUTF8[T](location: Location, reducer: LineReducer[T]): RIO[T] =
     streamLinesUTF8[reducer.S](location, reducer.init)((line, s) => reducer.reduce(line, s)).map(s => reducer.finalise(s))
 
+  def reduceBytes[T](location: Location, reducer: BytesReducer[T]): RIO[T] =
+    streamBytes[reducer.S](location, reducer.init)((bytes, s) => reducer.reduce(bytes, s)).map(s => reducer.finalise(s))
+
   /** get the last line of a file */
   def tail(location: Location, numberOfLines: Int): RIO[List[String]] =
     reduceLinesUTF8(location, LineReducer.tail(numberOfLines))
@@ -176,5 +192,4 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
   /** get the last line of a file */
   def lastLine(location: Location): RIO[Option[String]] =
     tail(location, numberOfLines = 1).map(_.lastOption)
-
 }

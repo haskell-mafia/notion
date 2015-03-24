@@ -12,7 +12,7 @@ class SequenceUtilSpec extends Specification with ScalaCheck { def is = s2"""
 
   Sequence Util should be able to read and write
   ==============================================
-  from a locaiton    $location
+  from a location    $location
 
 """
   val conf = new Configuration
