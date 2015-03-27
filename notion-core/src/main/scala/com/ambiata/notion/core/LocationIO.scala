@@ -8,6 +8,7 @@ import com.ambiata.mundane.io._
 import com.ambiata.mundane.bytes.Buffer
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
+import org.apache.commons.io.IOUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import java.io.File
@@ -53,8 +54,7 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     case s @ S3Location(bucket, key) =>
       S3Pattern(bucket, key).determine.flatMap { prefixOrAddress =>
         val asAddress = prefixOrAddress.flatMap(_.swap.toOption)
-        val lines = asAddress.map(_.getLines).getOrElse(S3Action.fail(s"There is no file at ${location.render}"))
-        lines
+        asAddress.map(_.getLines).getOrElse(S3Action.fail(s"There is no file at ${location.render}"))
       }.execute(s3Client)
 
     case h @ HdfsLocation(path)      =>
@@ -64,6 +64,25 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
             .flatMap(_.traverseU(Hdfs.readLines)).map(_.toList.flatten)
         else
           Hdfs.readLines(new Path(path)).map(_.toList)
+      }.run(configuration)
+  }
+
+  /** @return the content of the file present at `location` if there is one */
+  def readUtf8(location: Location): RIO[String] = location match {
+    case l @ LocalLocation(path)     => Files.read(l.filePath)
+    case s @ S3Location(bucket, key) =>
+      S3Pattern(bucket, key).determine.flatMap { prefixOrAddress =>
+        val asAddress = prefixOrAddress.flatMap(_.swap.toOption)
+        asAddress.map(_.getBytes.map(new String(_, "UTF-8"))).getOrElse(S3Action.fail(s"There is no file at ${location.render}"))
+      }.execute(s3Client)
+
+    case h @ HdfsLocation(path)      =>
+      Hdfs.isDirectory(new Path(path)).flatMap { isDirectory =>
+        if (isDirectory)
+          Hdfs.globFilesRecursively(new Path(path)).filterHidden
+            .flatMap(_.traverseU(Hdfs.readContentAsString).map(_.mkString))
+        else
+          Hdfs.readContentAsString(new Path(path))
       }.run(configuration)
   }
 
@@ -143,6 +162,35 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     case s @ S3Location(bucket, key) => S3Address(bucket, key).delete.execute(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.delete(new Path(path)).run(configuration)
   }
+
+  /**
+   * copy a file by simply piping lines from one location to the other
+   *
+   * if overwrite is false and the location file already exists, return an Error
+   */
+  def copyFile(from: Location, to: Location, overwrite: Boolean): RIO[Unit] = {
+    for {
+      exists <- exists(to)
+      _      <-
+      if (exists)
+        if (overwrite) delete(to) >> unsafeCopyFile(from, to)
+        else           RIO.fail(s"There is already a file at ${to.render}")
+      else unsafeCopyFile(from, to)
+    } yield ()
+  }
+
+  /** copy file from one location to another, always overwriting the destination */
+  def unsafeCopyFile(from: Location, to: Location): RIO[Unit] =
+    (from, to) match {
+      case (l1 @LocalLocation(_),  l2 @ LocalLocation(_)) => com.ambiata.mundane.io.Files.copy(l1.filePath, l2.filePath)
+      case (HdfsLocation(p1),      HdfsLocation(p2))      => Hdfs.cp(new Path(p1), new Path(p2), overwrite = true).run(configuration)
+      case (S3Location(b1, k1),    S3Location(b2, k2))    => S3Address(b1, k1).copy(S3Address(b2, k2)).execute(s3Client).void
+      case _                                              => pipe(from, to)
+    }
+
+  /** pipe bytes from one location to another */
+  def pipe(from: Location, to: Location): RIO[Unit] =
+    readUnsafe(from)(in => writeUnsafe(to)(out => Streams.pipe(in, out)))
 
   /** get the first lines of a file */
   def head(location: Location, numberOfLines: Int): RIO[List[String]] = {

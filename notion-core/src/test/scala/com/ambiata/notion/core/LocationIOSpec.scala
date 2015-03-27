@@ -4,6 +4,7 @@ import java.security.MessageDigest
 
 import com.ambiata.mundane.control.RIO
 import com.ambiata.mundane.data.Lists
+import org.apache.commons.io.IOUtils
 import org.specs2._
 import org.specs2.matcher._
 import com.ambiata.disorder._
@@ -26,6 +27,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
    stream lines                                         $streamLines
    list                                                 $list
    exists                                               $exists
+   copyFile                                             $copy
 
    first line of a file                                 $fileFirst
    the last line of a file                              $fileLast
@@ -119,6 +121,18 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     _ <- i.writeUtf8(p, data)
     e <- i.exists(p)
   } yield e ==== true)
+
+  def copy = prop((from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte]) =>
+    for {
+      f   <- from.location
+      i   <- from.io
+      s1   = new String(bytes, "UTF-8")
+      _   <- i.writeUtf8(f, s1)
+      t   <- to.location
+      _   <- i.copyFile(f, t, overwrite = true)
+      s2  <- i.readUtf8(t)
+    } yield s2 must_== s1
+  )
 
   def fileFirst = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
     for {
@@ -217,12 +231,11 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
    * HELPERS
    */
   def writeLines(loc: LocationTemporary, linesNumber: NaturalIntSmall): RIO[(Location, List[String])] = {
-    val lines = (0 until linesNumber.value).toList.map("line"+_)
+    val lines = (0 until linesNumber.value).toList.map("line" + _)
     for {
       l <- loc.location
       i <- loc.io
       _ <- i.writeUtf8Lines(l, lines)
     } yield (l, lines)
   }
-
 }
