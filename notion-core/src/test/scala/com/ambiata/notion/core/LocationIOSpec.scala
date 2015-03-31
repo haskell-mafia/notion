@@ -1,11 +1,11 @@
 package com.ambiata.notion.core
 
-import java.security.MessageDigest
-
 import com.ambiata.mundane.control.RIO
-import com.ambiata.mundane.data.Lists
-import org.apache.commons.io.IOUtils
+import org.scalacheck.Arbitrary
+import org.scalacheck.Arbitrary._
+import org.scalacheck.Gen._
 import org.specs2._
+import org.specs2.matcher.Parameters
 import org.specs2.matcher._
 import com.ambiata.disorder._
 import com.ambiata.mundane.io._
@@ -27,7 +27,8 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
    stream lines                                         $streamLines
    list                                                 $list
    exists                                               $exists
-   copyFile                                             $copy
+   copyFile                                             $copyFile
+   copyFiles                                            $copyFiles
 
    first line of a file                                 $fileFirst
    the last line of a file                              $fileLast
@@ -41,7 +42,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
 """
   override implicit def defaultParameters: Parameters =
-    new Parameters(minTestsOk = 3, workers = 3, maxSize = 10)
+    new Parameters(minTestsOk = 5, workers = 3, maxSize = 10)
 
   def isDirectory = prop((loc: LocationTemporary, id: Ident, data: String) => for {
     p <- loc.location
@@ -122,16 +123,35 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     e <- i.exists(p)
   } yield e ==== true)
 
-  def copy = prop((from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte]) =>
+  def copyFile = prop((from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte], overwrite: Boolean) =>
     for {
       f   <- from.location
       i   <- from.io
-      s1   = new String(bytes, "UTF-8")
-      _   <- i.writeUtf8(f, s1)
+      _   <- i.writeBytes(f, bytes)
       t   <- to.location
-      _   <- i.copyFile(f, t, overwrite = true)
-      s2  <- i.readUtf8(t)
-    } yield s2 must_== s1
+      _   <- i.copyFile(f, t, overwrite)
+      bs  <- i.readBytes(t)
+    } yield bs must_== bytes
+  )
+
+  def copyFiles = prop((from: LocationTemporary, isDirectory: Boolean, fileName: Ident, otherFileNames: List10[Ident], to: LocationTemporary, content: S, overwrite: Boolean) =>
+    for {
+      i     <- to.io
+      f     <- from.location
+      // we need at least one file name to create a directory
+      fileNames = (fileName +: otherFileNames.value).map(_.value).distinct
+      _     <-
+               if (isDirectory) fileNames.traverseU(name => i.writeUtf8(f </> FileName.unsafe(name), content.value))
+               else             i.writeUtf8(f, content.value)
+      t     <- to.location
+      _     <- i.copyFiles(f, t, overwrite)
+      fs    <- if (isDirectory) i.list(t) else RIO.ok(List())
+      isDir <- i.isDirectory(t)
+    } yield
+      if (isDirectory)
+        ("the target is a directory" ==> isDir) && (fs must haveSize(fileNames.size))
+      else
+        ("the target is not a directory" ==> !isDir) && (fs must haveSize(0))
   )
 
   def fileFirst = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>

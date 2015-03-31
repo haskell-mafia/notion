@@ -67,7 +67,7 @@ object build extends Build {
       depend.hadoop(version.value) ++
       depend.disorder)
   )
-  .dependsOn(core)
+  .dependsOn(core, core % "test->test")
 
   lazy val compilationSettings: Seq[Settings] = Seq(
     javaOptions ++= Seq(
