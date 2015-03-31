@@ -30,7 +30,7 @@ object depend {
 
   def poacher(version: String) =
     if (version.contains("cdh4"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150330223220-70a5956" % "compile->compile;test->test") ++ hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150330223215-70a5956" % "compile->compile;test->test") ++ hadoop(version)
     else if (version.contains("cdh5"))
       Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150330223220-70a5956" % "compile->compile;test->test") ++ hadoop(version)
     else
