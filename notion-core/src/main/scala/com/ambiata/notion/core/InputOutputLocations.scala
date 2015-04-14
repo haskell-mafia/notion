@@ -18,6 +18,10 @@ sealed trait ExecutionLocation {
 
   def render: String =
     fold(identity, identity)
+
+  /** @return a Location from the ExecutionLocation */
+  def location: Location =
+    fold(HdfsLocation.apply, LocalLocation.apply)
 }
 
 object ExecutionLocation {

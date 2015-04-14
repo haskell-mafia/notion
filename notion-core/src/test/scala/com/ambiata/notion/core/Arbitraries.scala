@@ -31,6 +31,13 @@ object Arbitraries {
   implicit def S3LocationArbitrary: Arbitrary[S3Location] =
     Arbitrary(S3PatternArbitrary.arbitrary.map { case S3Pattern(b, k) => S3Location(b, k) })
 
+
+  implicit def ArbitraryExecutionLocation: Arbitrary[ExecutionLocation] =
+    Arbitrary {
+      Gen.oneOf(arbitrary[HdfsLocation].map(hdfs => ExecutionLocation.HdfsExecutionLocation(hdfs.path)),
+        arbitrary[LocalLocation].map(local => ExecutionLocation.LocalExecutionLocation(local.path)))
+    }
+
   case class Path(path: String) {
     def onHdfs = "hdfs:///"+path
     def onLocal = "file:///"+path
