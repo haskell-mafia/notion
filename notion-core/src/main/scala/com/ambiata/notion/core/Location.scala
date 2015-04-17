@@ -65,6 +65,8 @@ object LocalLocation {
     LocalLocation(dir.path)
 }
 
+import argonaut._, Argonaut._
+
 object Location {
   def fromUri(s: String): String \/ Location = try {
     val uri = new java.net.URI(s)
@@ -84,4 +86,23 @@ object Location {
     case e: java.net.URISyntaxException =>
       e.getMessage.left
   }
+
+  implicit def LocationEncodeJson: EncodeJson[Location] =
+    EncodeJson({
+      case S3Location(b, k) => Json("s3"   := Json("bucket" := b, "key" := k))
+      case HdfsLocation(p)  => Json("hdfs" := Json("path" := p))
+      case LocalLocation(p) => Json("local":= Json("path" := p))
+    })
+
+  implicit def LocationDecodeJson: DecodeJson[Location] =
+    DecodeJson(c =>
+      tagged("s3",    c, jdecode2L(S3Location.apply)("bucket", "key")).map(l => l:Location) |||
+      tagged("hdfs",  c, jdecode1L(HdfsLocation.apply)("path")).map(l => l:Location) |||
+      tagged("local", c, jdecode1L(LocalLocation.apply)("path")).map(l => l:Location))
+
+  def tagged[A](tag: String, c: HCursor, decoder: DecodeJson[A]): DecodeResult[A] =
+    (c --\ tag).hcursor.fold(DecodeResult.fail[A]("Invalid tagged type", c.history))(decoder.decode)
+
+  implicit def LocationEqual: Equal[Location] =
+    Equal.equalA
 }

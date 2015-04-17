@@ -44,6 +44,7 @@ object build extends Build {
       addCompilerPlugin("org.spire-math" % "kind-projector_2.11" % "0.5.2")
     ) ++ Seq[Settings](libraryDependencies ++=
       depend.scalaz  ++
+      depend.argonaut ++
       depend.mundane ++
       depend.poacher(version.value) ++
       depend.saws    ++
