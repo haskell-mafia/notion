@@ -144,12 +144,14 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
                if (isDirectory) fileNames.traverseU(name => i.writeUtf8(f </> FileName.unsafe(name), content.value))
                else             i.writeUtf8(f, content.value)
       t     <- to.location
-      _     <- i.copyFiles(f, t, overwrite)
+      rs    <- i.copyFiles(f, t, overwrite)
+      ins   <- if (isDirectory) i.list(f) else RIO.ok(List(f))
       fs    <- if (isDirectory) i.list(t) else RIO.ok(List())
       isDir <- i.isDirectory(t)
     } yield
       if (isDirectory)
-        ("the target is a directory" ==> isDir) && (fs must haveSize(fileNames.size))
+        ("the target is a directory" ==> isDir) && (fs must haveSize(fileNames.size)) &&
+        ("the copied files are the list of files in the directory" ==> (rs ==== ins))
       else
         ("the target is not a directory" ==> !isDir) && (fs must haveSize(0))
   )

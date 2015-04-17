@@ -98,29 +98,33 @@ object SynchronizedInputsOutputs {
   /**
    * Download input files or directories, using distcopy to synchronize files or directories when
    * going from S3 to Hdfs
+   *
+   * @return the list of all synchronized files
    */
-  def synchronizeInputs(inputs: List[SynchronizedLocation], overwrite: Boolean, locationIO: LocationIO): RIO[Unit] = {
+  def synchronizeInputs(inputs: List[SynchronizedLocation], overwrite: Boolean, locationIO: LocationIO): RIO[List[Location]] = {
     inputs.traverseU(_.fold(
-      hdfs  => RIO.ok(()),
-      local => RIO.ok(()),
+      hdfs  => RIO.ok(Nil: List[Location]),
+      local => RIO.ok(Nil: List[Location]),
       (local, hdfs)    => locationIO.copyFiles(LocalLocation(local), HdfsLocation(hdfs), overwrite),
       (pattern, local) => locationIO.copyFiles(S3Location(pattern.bucket, pattern.unknown), LocalLocation(local), overwrite),
       (pattern, hdfs)  => copyFromS3ToHdfs(S3Location(pattern.bucket, pattern.unknown), HdfsLocation(hdfs), overwrite, locationIO)
-    )).void
+    )).map(_.flatten)
   }
 
   /**
    * Upload output files or directories, using distcopy to synchronize files or directories when
    * going from Hdfs to S3
+   *
+   * @return the list of all synchronized files
    */
-  def synchronizeOutputs(outputLocations: List[SynchronizedLocation], overwrite: Boolean, locationIO: LocationIO): RIO[Unit] =
+  def synchronizeOutputs(outputLocations: List[SynchronizedLocation], overwrite: Boolean, locationIO: LocationIO): RIO[List[Location]] =
     outputLocations.traverseU(_.fold(
-      hdfs  => RIO.ok(()),
-      local => RIO.ok(()),
+      hdfs  => RIO.ok(Nil: List[Location]),
+      local => RIO.ok(Nil: List[Location]),
       (local, hdfs)    => locationIO.copyFiles(LocalLocation(local), HdfsLocation(hdfs), overwrite),
       (pattern, local) => locationIO.copyFiles(LocalLocation(local), S3Location(pattern.bucket, pattern.unknown), overwrite),
       (pattern, hdfs)  => copyFromHdfsToS3(HdfsLocation(hdfs), S3Location(pattern.bucket, pattern.unknown), overwrite, locationIO)
-    )).void
+    )).map(_.flatten)
 
   /** @return true if this configuration is for a cluster job (not local) */
   def isClusterConfiguration(configuration: Configuration): Boolean =
@@ -144,15 +148,17 @@ object SynchronizedInputsOutputs {
       case S3Location(_,_)  => false
     }
 
-  def copyFromS3ToHdfs(source: S3Location, target: HdfsLocation, overwrite: Boolean, locationIO: LocationIO): RIO[Unit] =
+  /** @return the list of all copied files */
+  def copyFromS3ToHdfs(source: S3Location, target: HdfsLocation, overwrite: Boolean, locationIO: LocationIO): RIO[List[Location]] =
     locationIO.isDirectory(source) >>= { isDirectory =>
-      if (!isDirectory) locationIO.copyFile(source, target, overwrite)
+      if (!isDirectory) locationIO.copyFile(source, target, overwrite).as(List(source))
       else downloadDirectory(source, target, locationIO)
     }
 
-  def copyFromHdfsToS3(source: HdfsLocation, target: S3Location, overwrite: Boolean, locationIO: LocationIO): RIO[Unit] =
+  /** @return the list of all copied files */
+  def copyFromHdfsToS3(source: HdfsLocation, target: S3Location, overwrite: Boolean, locationIO: LocationIO): RIO[List[Location]] =
     locationIO.isDirectory(source) >>= { isDirectory =>
-      if (!isDirectory) locationIO.copyFile(source, target, overwrite)
+      if (!isDirectory) locationIO.copyFile(source, target, overwrite).as(List(source))
       else uploadDirectory(source, target, locationIO)
     }
 }

@@ -207,17 +207,19 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
    *
    * Note: in the case of a large copy from S3 to Hdfs or from Hdfs to S3, a distcopy should be done instead
    * see SynchronizedInputsOutputs
+   *
+   * @return the list of copied locations
    */
-  def copyFiles(from: Location, to: Location, overwrite: Boolean): RIO[Unit] =
+  def copyFiles(from: Location, to: Location, overwrite: Boolean): RIO[List[Location]] =
     isDirectory(from) >>= { isDirectory =>
       if (isDirectory)
         list(from).flatMap(_.traverseU {
-          case f @ LocalLocation(_) => copyFile(f, to </> f.filePath, overwrite)
-          case f @ HdfsLocation(_)  => copyFile(f, to </> f.filePath, overwrite)
-          case s @ S3Location(_, k) => copyFile(s, to </> FilePath.unsafe(k), overwrite)
-        }).void
+          case f @ LocalLocation(_) => copyFile(f, to </> f.filePath, overwrite).as(f: Location)
+          case f @ HdfsLocation(_)  => copyFile(f, to </> f.filePath, overwrite).as(f: Location)
+          case s @ S3Location(_, k) => copyFile(s, to </> FilePath.unsafe(k), overwrite).as(s: Location)
+        })
       else
-        copyFile(from, to, overwrite)
+        copyFile(from, to, overwrite).as(List(from))
     }
 
   /** get the first lines of a file */
