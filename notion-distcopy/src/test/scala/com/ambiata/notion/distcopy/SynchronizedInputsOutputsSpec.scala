@@ -16,24 +16,24 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
 
  A configuration is a Cluster configuration if the file system scheme is hdfs $clusterConfiguration
 
- When a shadow directory is used
-  the shadow dir must be in a location that is compatible with the configuration in LocationIO $validConfiguration
+ When a sync directory is used
+  the sync dir must be in a location that is compatible with the configuration in LocationIO   $validConfiguration
 
-  if the shadow dir is not defined then
+  if the sync dir is not defined then
     if the configuration is local, then all input/output locations must be local
-    if the configuration is hdfs then all input/output locations must be hdfs                  $shadowDirNotDefined
+    if the configuration is hdfs then all input/output locations must be hdfs                  $syncDirNotDefined
 
-  if the shadow dir is defined on hdfs
+  if the sync dir is defined on hdfs
     the configuration must be on hdfs
-    at least one input or output location is not hdfs                                          $shadowDirOnHdfs
+    at least one input or output location is not hdfs                                          $syncDirOnHdfs
 
-  if the shadow dir is defined on local
+  if the sync dir is defined on local
     the configuration must be local
-    at least one input or output location is not local and no location is hdfs                 $shadowDirOnLocal
+    at least one input or output location is not local and no location is hdfs                 $syncDirOnLocal
 
-  the shadow dir can not be defined on S3                                                      $shadowDirOnS3
+  the sync dir can not be defined on S3                                                        $syncDirOnS3
 
- The synchronized location for a location on S3 depends on the shadow directory location.
+ The synchronized location for a location on S3 depends on the sync directory location.
    The authorised combinations for the input location and the execution location are
      Local / Local => LocalNoSync
      Hdfs  / Hdfs  => HdfsNoSync
@@ -47,60 +47,60 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
     isClusterConfiguration(createConfiguration(scheme)).iff(scheme.s == "hdfs")
   }
 
-  def validConfiguration = prop { (shadowDirLocation: Location, s3: S3Location, local: LocalLocation, configuration: Configuration) =>
+  def validConfiguration = prop { (syncDirLocation: Location, s3: S3Location, local: LocalLocation, configuration: Configuration) =>
     val valid1 =
-      isClusterConfiguration(configuration) && isHdfsLocation(shadowDirLocation) ||
-      isLocalConfiguration(configuration)   && isLocalLocation(shadowDirLocation)
+      isClusterConfiguration(configuration) && isHdfsLocation(syncDirLocation) ||
+      isLocalConfiguration(configuration)   && isLocalLocation(syncDirLocation)
 
-    // create a list of inputs which require a shadow directory
+    // create a list of inputs which require a sync directory
     val inputs =
       if (isClusterConfiguration(configuration)) List(local)
       else List(s3)
 
-    val valid2 = validateShadowDir(Some(shadowDirLocation), inputs, new LocationIO(configuration, Clients.s3)).isRight
+    val valid2 = validateSyncDir(Some(syncDirLocation), inputs, new LocationIO(configuration, Clients.s3)).isRight
 
     valid1 ==== valid2
   }
 
-  def shadowDirNotDefined = prop { (locations: List10[Location], configuration: Configuration) =>
+  def syncDirNotDefined = prop { (locations: List10[Location], configuration: Configuration) =>
     val valid1 =
         isClusterConfiguration(configuration) && !locations.value.exists(l => !isHdfsLocation(l)) ||
         isLocalConfiguration(configuration)   && !locations.value.exists(l => !isLocalLocation(l))
 
-    val valid2 = validateShadowDir(None, locations.value, new LocationIO(configuration, Clients.s3)).isRight
+    val valid2 = validateSyncDir(None, locations.value, new LocationIO(configuration, Clients.s3)).isRight
 
     valid1 ==== valid2
   }
 
-  def shadowDirOnHdfs = prop { (shadowDir: HdfsLocation, locations: List10[Location], configuration: Configuration) =>
+  def syncDirOnHdfs = prop { (syncDir: HdfsLocation, locations: List10[Location], configuration: Configuration) =>
     val valid1 =
       isClusterConfiguration(configuration) && locations.value.exists(l => !isHdfsLocation(l))
 
-    val valid2 = validateShadowDir(Some(shadowDir), locations.value, new LocationIO(configuration, Clients.s3)).isRight
+    val valid2 = validateSyncDir(Some(syncDir), locations.value, new LocationIO(configuration, Clients.s3)).isRight
 
     valid1 ==== valid2
   }
 
-  def shadowDirOnLocal = prop { (shadowDir: LocalLocation, locations: List10[Location], configuration: Configuration) =>
+  def syncDirOnLocal = prop { (syncDir: LocalLocation, locations: List10[Location], configuration: Configuration) =>
     val valid1 =
       isLocalConfiguration(configuration) && locations.value.exists(l => !isLocalLocation(l))
 
-    val valid2 = validateShadowDir(Some(shadowDir), locations.value, new LocationIO(configuration, Clients.s3)).isRight
+    val valid2 = validateSyncDir(Some(syncDir), locations.value, new LocationIO(configuration, Clients.s3)).isRight
 
     valid1 ==== valid2
   }
 
-  def shadowDirOnS3 = prop { (shadowDir: S3Location, locations: List10[Location], configuration: Configuration) =>
-    validateShadowDir(Some(shadowDir), locations.value, new LocationIO(configuration, Clients.s3)) must be_-\/
+  def syncDirOnS3 = prop { (syncDir: S3Location, locations: List10[Location], configuration: Configuration) =>
+    validateSyncDir(Some(syncDir), locations.value, new LocationIO(configuration, Clients.s3)) must be_-\/
   }
 
-  def createSyncLocation = prop { (location: Location, shadowDirLocation: Option[ExecutionLocation]) =>
+  def createSyncLocation = prop { (location: Location, syncDirLocation: Option[ExecutionLocation]) =>
     val valid1 =
-      !shadowDirLocation.isDefined && !isS3Location(location) ||
-      shadowDirLocation.isDefined  && shadowDirLocation.exists(isHdfs) ||
-      shadowDirLocation.isDefined  && shadowDirLocation.exists(isLocal) && !isHdfsLocation(location)
+      !syncDirLocation.isDefined && !isS3Location(location) ||
+      syncDirLocation.isDefined  && syncDirLocation.exists(isHdfs) ||
+      syncDirLocation.isDefined  && syncDirLocation.exists(isLocal) && !isHdfsLocation(location)
 
-    val valid2 = createSynchronizedLocation(shadowDirLocation, location).isRight
+    val valid2 = createSynchronizedLocation(syncDirLocation, location).isRight
 
     valid1 ==> valid2 :| "v1 ==> v2" &&
     valid2 ==> valid1 :| "v2 ==> v1"
