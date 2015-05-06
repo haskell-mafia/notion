@@ -26,10 +26,10 @@ object DistCopy {
       _             <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO))
     } yield fromAddresses.map { case S3Address(b, k) => S3Location(b, k) }
 
-  /** upload a large file by doing a distcopy from hdfs to s3 */
+  /** upload a large directory by doing a distcopy from hdfs to s3 */
   def uploadDirectory(from: HdfsLocation, to: S3Location, locationIO: LocationIO): RIO[List[Location]] =
     for {
-      fromPaths <- Hdfs.globFiles(new Path(from.path, "*")).run(locationIO.configuration)
+      fromPaths <- Hdfs.globFilesRecursively(new Path(from.path)).run(locationIO.configuration)
       mappings  <- fromPaths.traverseU(createUploadMapping(to, locationIO))
       _         <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO))
     } yield fromPaths.map(p => HdfsLocation(p.toString))
