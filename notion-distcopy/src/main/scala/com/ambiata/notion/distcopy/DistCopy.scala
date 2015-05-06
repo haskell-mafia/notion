@@ -48,13 +48,13 @@ object DistCopy {
 
   /** create a Download mapping for a file if it doesn't exist */
   def createDownloadMapping(to: HdfsLocation, locationIO: LocationIO)(address: S3Address): RIO[Option[DownloadMapping]] = {
-    val toPath = new Path((to.dirPath <|> FilePath.unsafe(address.key).basename).path)
+    val toPath = new Path((to.dirPath </> FilePath.unsafe(address.key)).path)
     pathExist(toPath, locationIO).map(exists => if (exists) None else Some(DownloadMapping(address, toPath)))
   }
 
   /** create an Upload mapping for a file if it doesn't exist */
   def createUploadMapping(to: S3Location, locationIO: LocationIO)(path: Path): RIO[Option[UploadMapping]] = {
-    val toAddress = S3Prefix(to.bucket, to.key) | path.getName
+    val toAddress = S3Address(to.bucket, to.key + path.toUri.getPath)
     addressExist(toAddress, locationIO).map(exists => if (exists) None else Some(UploadMapping(path, toAddress)))
   }
 }

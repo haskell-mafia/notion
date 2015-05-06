@@ -98,13 +98,4 @@ Upload files from HDFS to S3
     _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
   } yield ()) must beFail)
 
-  implicit def ArbitraryFilePath: Arbitrary[FilePath] =
-    Arbitrary {
-      for {
-        n  <- Gen.choose(1, 3)
-        fs <- Gen.listOfN(n, Gen.identifier).map(fs => FilePath.unsafe(fs.mkString("/")))
-      } yield fs
-    }
-
-
 }
