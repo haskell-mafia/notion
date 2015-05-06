@@ -49,13 +49,19 @@ object DistCopy {
   /** create a Download mapping for a file if it doesn't exist */
   def createDownloadMapping(to: HdfsLocation, locationIO: LocationIO)(address: S3Address): RIO[Option[DownloadMapping]] = {
     val toPath = new Path((to.dirPath </> FilePath.unsafe(address.key)).path)
-    pathExist(toPath, locationIO).map(exists => if (exists) None else Some(DownloadMapping(address, toPath)))
+    pathExist(toPath, locationIO).flatMap { exists =>
+      if (exists) RIO.putStrLn(s"a file already exists at $toPath, $address won't be downloaded again") >> RIO.ok(None)
+      else        RIO.ok(Some(DownloadMapping(address, toPath)))
+    }
   }
 
-  /** create an Upload mapping for a file if it doesn't exist */
+  /** create an Upload mapping for a file, but fail if it already exist to make sure we don't override anything by accident */
   def createUploadMapping(to: S3Location, locationIO: LocationIO)(path: Path): RIO[Option[UploadMapping]] = {
     val toAddress = S3Address(to.bucket, to.key + path.toUri.getPath)
-    addressExist(toAddress, locationIO).map(exists => if (exists) None else Some(UploadMapping(path, toAddress)))
+    addressExist(toAddress, locationIO).flatMap { exists =>
+      if (exists) RIO.fail(s"${toAddress.render} exists already and cannot be overwritten")
+      else        RIO.ok(Some(UploadMapping(path, toAddress)))
+    }
   }
 }
 

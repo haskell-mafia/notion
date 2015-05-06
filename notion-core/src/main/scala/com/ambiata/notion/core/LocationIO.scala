@@ -186,6 +186,24 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     } yield ()
   }
 
+  /**
+   * copy a file by simply piping lines from one location to the other
+   *
+   * if the file exist at destination
+   *  - if the destination is a sync location do nothing
+   *  - otherwise fail
+   */
+  def syncFile(from: Location, to: Location): RIO[Unit] =
+    exists(to).flatMap { exist =>
+      if (!exist) unsafeCopyFile(from, to)
+      else (from, to) match {
+        case (f: S3Location, t: LocalLocation)   => RIO.putStrLn(s"a file already exists at ${to.render}, ${from.render} won't be downloaded again")
+        case (f: S3Location, t: HdfsLocation)    => RIO.putStrLn(s"a file already exists at ${to.render}, ${from.render} won't be downloaded again")
+        case (f: LocalLocation, t: HdfsLocation) => RIO.putStrLn(s"a file already exists at ${to.render}, ${from.render} won't be downloaded again")
+        case other                               => RIO.fail("can not overwrite an existing result file at "+to.render)
+      }
+    }
+
   /** copy file from one location to another, always overwriting the destination */
   def unsafeCopyFile(from: Location, to: Location): RIO[Unit] =
     (from, to) match {
@@ -200,26 +218,27 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     readUnsafe(from)(in => writeUnsafe(to)(out => Streams.pipe(in, out)))
 
   /**
-   * copy files from one location to another.
+   * synchronize files from one location to another.
    *
    * if the first location is a directory, copy all the files in that directory to the other location (must be a directory as well)
-   * the copy is *not* recursive.
+   *
+   * files existing at destination are not being copied
    *
    * Note: in the case of a large copy from S3 to Hdfs or from Hdfs to S3, a distcopy should be done instead
    * see SynchronizedInputsOutputs
    *
    * @return the list of copied locations
    */
-  def copyFiles(from: Location, to: Location, overwrite: Boolean): RIO[List[Location]] =
+  def syncFiles(from: Location, to: Location): RIO[List[Location]] =
     isDirectory(from) >>= { isDirectory =>
       if (isDirectory)
         list(from).flatMap(_.traverseU {
-          case f @ LocalLocation(_) => copyFile(f, to </> f.filePath, overwrite).as(f: Location)
-          case f @ HdfsLocation(_)  => copyFile(f, to </> f.filePath, overwrite).as(f: Location)
-          case s @ S3Location(_, k) => copyFile(s, to </> FilePath.unsafe(k), overwrite).as(s: Location)
+          case f @ LocalLocation(_) => syncFile(f, to </> f.filePath).as(f: Location)
+          case f @ HdfsLocation(_)  => syncFile(f, to </> f.filePath).as(f: Location)
+          case s @ S3Location(_, k) => syncFile(s, to </> FilePath.unsafe(k)).as(s: Location)
         })
       else
-        copyFile(from, to, overwrite).as(List(from))
+        syncFile(from, to).as(List(from))
     }
 
   /** get the first lines of a file */
