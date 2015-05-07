@@ -22,7 +22,7 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
 
   An upload mapping must not be created if the file already exists
     if no file exists $uploadMappingIsSome
-    if a file exists  $uploadMappingIsNone
+    if a file exists  $uploadMappingIsFail
 
   A download mapping must contain
    the full path of the file to copy $createDownloadMappingForADirectory
@@ -56,14 +56,16 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
     } yield result must beSome
   }
 
-  def uploadMappingIsNone = prop { (s3Temp: S3Temporary, hdfsTemp: HdfsTemporary) =>
-    for {
+  def uploadMappingIsFail = prop { (s3Temp: S3Temporary, hdfsTemp: HdfsTemporary) =>
+    val result = for {
       path    <- hdfsTemp.path.run(configuration)
       prefix  <- s3Temp.prefix.execute(s3Client)
       address =  S3Address(prefix.bucket, prefix.prefix + path.toUri.getPath)
       _       <- address.put("old lines").execute(s3Client)
-      result  <- DistCopy.createUploadMapping(S3Location(prefix.bucket, prefix.prefix), locationIO)(path)
-    } yield result must beNone
+      _       <- DistCopy.createUploadMapping(S3Location(prefix.bucket, prefix.prefix), locationIO)(path)
+    } yield ()
+
+    result must beFail
   }
 
   def createDownloadMappingForADirectory = prop { (s3Temp: S3Temporary, hdfsTemp: HdfsTemporary, filePath: FilePath) =>

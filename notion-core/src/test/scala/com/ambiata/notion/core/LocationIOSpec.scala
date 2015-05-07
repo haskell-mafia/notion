@@ -27,8 +27,9 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
    stream lines                                         $streamLines
    list                                                 $list
    exists                                               $exists
-   copyFile                                             $copyFile
-   copyFiles                                            $copyFiles
+   syncFile                                             $syncFile
+   syncFiles                                            $syncFiles
+   syncFile fails when trying to overwrite results      $syncFileFail
 
    first line of a file                                 $fileFirst
    the last line of a file                              $fileLast
@@ -123,18 +124,42 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     e <- i.exists(p)
   } yield e ==== true)
 
-  def copyFile = prop((from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte], overwrite: Boolean) =>
+  def syncFile = prop((from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte]) =>
     for {
       f   <- from.location
       i   <- from.io
       _   <- i.writeBytes(f, bytes)
       t   <- to.location
-      _   <- i.copyFile(f, t, overwrite)
+      _   <- i.syncFile(f, t)
       bs  <- i.readBytes(t)
     } yield bs must_== bytes
   )
 
-  def copyFiles = prop((from: LocationTemporary, isDirectory: Boolean, fileName: Ident, otherFileNames: List10[Ident], to: LocationTemporary, content: S, overwrite: Boolean) =>
+  def syncFileFail = prop { (from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte]) =>
+    val result = for {
+      f <- from.location
+      i <- from.io
+      _ <- i.writeBytes(f, bytes)
+      t <- to.location
+      _ <- i.writeBytes(t, bytes)
+      _ <- i.syncFile(f, t)
+    } yield ()
+
+    val fromToResult = for {
+      f <- from.location
+      t <- to.location
+      r <- result.map(_ => true).orElse(false)
+    } yield (f, t, r)
+
+    fromToResult must beOkLike {
+      case (f: S3Location, t: LocalLocation, r)   => r
+      case (f: S3Location, t: HdfsLocation, r)    => r
+      case (f: LocalLocation, t: HdfsLocation, r) => r
+      case (_, _ , r) => !r
+    }
+  }
+
+  def syncFiles = prop((from: LocationTemporary, isDirectory: Boolean, fileName: Ident, otherFileNames: List10[Ident], to: LocationTemporary, content: S) =>
     for {
       i     <- to.io
       f     <- from.location
@@ -144,7 +169,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
                if (isDirectory) fileNames.traverseU(name => i.writeUtf8(f </> FileName.unsafe(name), content.value))
                else             i.writeUtf8(f, content.value)
       t     <- to.location
-      rs    <- i.copyFiles(f, t, overwrite)
+      rs    <- i.syncFiles(f, t)
       ins   <- if (isDirectory) i.list(f) else RIO.ok(List(f))
       fs    <- if (isDirectory) i.list(t) else RIO.ok(List())
       isDir <- i.isDirectory(t)
