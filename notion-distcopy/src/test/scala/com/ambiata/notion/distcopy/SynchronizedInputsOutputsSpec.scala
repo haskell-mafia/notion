@@ -100,10 +100,18 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
       syncDirLocation.isDefined  && syncDirLocation.exists(isHdfs) ||
       syncDirLocation.isDefined  && syncDirLocation.exists(isLocal) && !isHdfsLocation(location)
 
-    val valid2 = createSynchronizedLocation(syncDirLocation, location).isRight
+    val syncLocation = createSynchronizedLocation(syncDirLocation, location)
+    val valid2 = syncLocation.isRight
+
+    val syncDirIsHdfs = syncDirLocation.exists(_.fold(_ => true, _ => false))
+    val isHdfsNoSync = isHdfsLocation(location) && syncDirIsHdfs
 
     valid1 ==> valid2 :| "v1 ==> v2" &&
-    valid2 ==> valid1 :| "v2 ==> v1"
+    valid2 ==> valid1 :| "v2 ==> v1" &&
+    (!isHdfsNoSync ||
+      ((location, syncLocation.toOption) must beLike {
+        case (HdfsLocation(p), Some(sl)) => sl.path.toUri.toString ==== p
+      }))
   }
 
   /**

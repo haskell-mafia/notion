@@ -80,8 +80,8 @@ object SynchronizedInputsOutputs {
         sd.fold(path => LocalHdfsSync(p, (DirPath.unsafe(path) </> DirPath.unsafe(p)).path),
                 path => LocalNoSync(p)).right
 
-      case (Some(sd), HdfsLocation(_)) =>
-        sd.fold(path => HdfsNoSync(path).right,
+      case (Some(sd), HdfsLocation(p)) =>
+        sd.fold(path => HdfsNoSync(p).right,
                 path => s"A synchronized location can not be on Hdfs when the execution is local. Got $path".left)
 
       case (Some(sd), S3Location(b, k)) =>
