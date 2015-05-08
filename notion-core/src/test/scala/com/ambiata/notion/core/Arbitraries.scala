@@ -38,13 +38,13 @@ object Arbitraries {
         arbitrary[LocalLocation].map(local => ExecutionLocation.LocalExecutionLocation(local.path)))
     }
 
-  case class Path(path: String) {
+  case class ExecutionPath(path: String) {
     def onHdfs = "hdfs:///"+path
     def onLocal = "file:///"+path
   }
 
-  implicit def ArbitraryPath: Arbitrary[Path] =
-    Arbitrary(genPath.map(Path))
+  implicit def ArbitraryExecutionPath: Arbitrary[ExecutionPath] =
+    Arbitrary(genPath.map(ExecutionPath))
 
   def genPath: Gen[String] =
     Gen.nonEmptyListOf(Gen.identifier).map(_.mkString("/"))
