@@ -2,6 +2,7 @@ package com.ambiata.notion
 package distcopy
 
 import com.ambiata.disorder.List10
+import com.ambiata.mundane.io.DirPath
 import com.ambiata.notion.core._
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.testing.AwsScalaCheckSpec
@@ -11,6 +12,7 @@ import org.scalacheck.{Gen, Arbitrary}
 import org.specs2.matcher._
 import Arbitrary._
 import com.ambiata.notion.core.Arbitraries._
+import org.apache.hadoop.fs.Path
 
 class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with DisjunctionMatchers { def is = s2"""
 
@@ -41,6 +43,16 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
      S3    / Hdfs  => S3HdfsSync
      S3    / Local => S3LocalSync                                                              $createSyncLocation
 
+   The sync paths must be correct
+     when the source location is local
+        if there is a sync dir                                                                 $syncLocalPathWithSyncDir
+        if there is no sync dir                                                                $syncLocalPathWithNoSyncDir
+     when the source location is hdfs
+        if there is a sync dir                                                                 $syncHdfsPathWithSyncDir
+        if there is no sync dir                                                                $syncHdfsPathWithNoSyncDir
+     when the source location is s3
+        if there is a sync dir                                                                 $syncS3PathWithSyncDir
+        if there is no sync dir                                                                $syncS3PathWithNoSyncDir
 """
 
   def clusterConfiguration = prop { scheme: Scheme =>
@@ -107,11 +119,45 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
     val isHdfsNoSync = isHdfsLocation(location) && syncDirIsHdfs
 
     valid1 ==> valid2 :| "v1 ==> v2" &&
-    valid2 ==> valid1 :| "v2 ==> v1" &&
-    (!isHdfsNoSync ||
-      ((location, syncLocation.toOption) must beLike {
-        case (HdfsLocation(p), Some(sl)) => sl.path.toUri.toString ==== p
-      }))
+    valid2 ==> valid1 :| "v2 ==> v1"
+  }
+
+  def syncLocalPathWithSyncDir = prop { (location: LocalLocation, syncDir: ExecutionLocation) =>
+    val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption.get
+    val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+
+    (syncLocation.path ==== new Path(location.path)).when(!syncDirIsHdfs) and
+    (syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.path).asRelative.path)).when(syncDirIsHdfs)
+  }
+
+  def syncLocalPathWithNoSyncDir = prop { location: LocalLocation =>
+    val syncLocation = createSynchronizedLocation(None, location).toOption.get
+    syncLocation.path ==== new Path(location.path)
+  }
+
+  def syncHdfsPathWithSyncDir = prop { (location: HdfsLocation, syncDir: ExecutionLocation) =>
+     val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption
+     val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+
+     (syncLocation ==== None).when(!syncDirIsHdfs) and
+     (syncLocation.map(_.path) ==== Some(new Path(location.path))).when(syncDirIsHdfs)
+   }
+
+  def syncHdfsPathWithNoSyncDir = prop { location: HdfsLocation =>
+    val syncLocation = createSynchronizedLocation(None, location).toOption.get
+    syncLocation.path ==== new Path(location.path)
+  }
+
+  def syncS3PathWithSyncDir = prop { (location: S3Location, syncDir: ExecutionLocation) =>
+    val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption.get
+    val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+
+    syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.key).path)
+  }
+
+  def syncS3PathWithNoSyncDir = prop { location: S3Location =>
+    val syncLocation = createSynchronizedLocation(None, location).toOption
+    syncLocation ==== None
   }
 
   /**

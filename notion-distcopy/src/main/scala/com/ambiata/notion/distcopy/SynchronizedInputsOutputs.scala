@@ -77,7 +77,7 @@ object SynchronizedInputsOutputs {
     (syncDir, location) match {
       // cluster execution
       case (Some(sd), l @ LocalLocation(p)) =>
-        sd.fold(path => LocalHdfsSync(p, (DirPath.unsafe(path) </> DirPath.unsafe(p)).path),
+        sd.fold(path => LocalHdfsSync(p, (DirPath.unsafe(path) </> DirPath.unsafe(new Path(p).toUri.getPath)).path),
                 path => LocalNoSync(p)).right
 
       case (Some(sd), HdfsLocation(p)) =>
