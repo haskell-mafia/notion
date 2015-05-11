@@ -43,8 +43,16 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
      S3    / Hdfs  => S3HdfsSync
      S3    / Local => S3LocalSync                                                              $createSyncLocation
 
-   The sync paths must be correct                                                              $syncPaths
-
+   The sync paths must be correct
+     when the source location is local
+        if there is a sync dir                                                                 $syncLocalPathWithSyncDir
+        if there is no sync dir                                                                $syncLocalPathWithNoSyncDir
+     when the source location is hdfs
+        if there is a sync dir                                                                 $syncHdfsPathWithSyncDir
+        if there is no sync dir                                                                $syncHdfsPathWithNoSyncDir
+     when the source location is s3
+        if there is a sync dir                                                                 $syncS3PathWithSyncDir
+        if there is no sync dir                                                                $syncS3PathWithNoSyncDir
 """
 
   def clusterConfiguration = prop { scheme: Scheme =>
@@ -114,43 +122,43 @@ class SynchronizedInputsOutputsSpec extends AwsScalaCheckSpec(tests = 5) with Di
     valid2 ==> valid1 :| "v2 ==> v1"
   }
 
-  def syncPaths =
-    // local
-    prop { (location: LocalLocation, syncDir: ExecutionLocation) =>
-      val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption.get
-      val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+  def syncLocalPathWithSyncDir = prop { (location: LocalLocation, syncDir: ExecutionLocation) =>
+    val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption.get
+    val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
 
-      (syncLocation.path ==== new Path(location.path)).when(!syncDirIsHdfs) and
-      (syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.path).asRelative.path)).when(syncDirIsHdfs)
-    } &&
-    prop { location: LocalLocation =>
-      val syncLocation = createSynchronizedLocation(None, location).toOption.get
-      syncLocation.path ==== new Path(location.path)
-    } &&
-    // hdfs
-    prop { (location: HdfsLocation, syncDir: ExecutionLocation) =>
-      val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption
-      val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+    (syncLocation.path ==== new Path(location.path)).when(!syncDirIsHdfs) and
+    (syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.path).asRelative.path)).when(syncDirIsHdfs)
+  }
 
-      (syncLocation ==== None).when(!syncDirIsHdfs) and
-      (syncLocation.map(_.path) ==== Some(new Path(location.path))).when(syncDirIsHdfs)
-    } &&
-    prop { location: HdfsLocation =>
-      val syncLocation = createSynchronizedLocation(None, location).toOption.get
-      syncLocation.path ==== new Path(location.path)
-    } &&
-    // S3
-    prop { (location: S3Location, syncDir: ExecutionLocation) =>
-      val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption.get
-      val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+  def syncLocalPathWithNoSyncDir = prop { location: LocalLocation =>
+    val syncLocation = createSynchronizedLocation(None, location).toOption.get
+    syncLocation.path ==== new Path(location.path)
+  }
 
-      (syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.key).path)).when(!syncDirIsHdfs) and
-      (syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.key).path)).when(syncDirIsHdfs)
-    } &&
-    prop { location: S3Location =>
-      val syncLocation = createSynchronizedLocation(None, location).toOption
-      syncLocation ==== None
-    }
+  def syncHdfsPathWithSyncDir = prop { (location: HdfsLocation, syncDir: ExecutionLocation) =>
+     val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption
+     val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+
+     (syncLocation ==== None).when(!syncDirIsHdfs) and
+     (syncLocation.map(_.path) ==== Some(new Path(location.path))).when(syncDirIsHdfs)
+   }
+
+  def syncHdfsPathWithNoSyncDir = prop { location: HdfsLocation =>
+    val syncLocation = createSynchronizedLocation(None, location).toOption.get
+    syncLocation.path ==== new Path(location.path)
+  }
+
+  def syncS3PathWithSyncDir = prop { (location: S3Location, syncDir: ExecutionLocation) =>
+    val syncLocation = createSynchronizedLocation(Some(syncDir), location).toOption.get
+    val syncDirIsHdfs = syncDir.fold(_ => true, _ => false)
+
+    syncLocation.path ==== new Path(syncDir.path.toUri.getPath, DirPath.unsafe(location.key).path)
+  }
+
+  def syncS3PathWithNoSyncDir = prop { location: S3Location =>
+    val syncLocation = createSynchronizedLocation(None, location).toOption
+    syncLocation ==== None
+  }
 
   /**
    * HELPERS
