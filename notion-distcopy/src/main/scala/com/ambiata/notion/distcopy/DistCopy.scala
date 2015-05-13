@@ -19,19 +19,19 @@ object DistCopy {
    *
    * Don't copy files which have already been copied
    */
-  def downloadDirectory(from: S3Location, to: HdfsLocation, locationIO: LocationIO): RIO[List[Location]] =
+  def downloadDirectory(from: S3Location, to: HdfsLocation, locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] =
     for {
       fromAddresses <- S3Prefix(from.bucket, from.key).listAddress.execute(locationIO.s3Client)
       mappings      <- fromAddresses.traverseU(createDownloadMapping(to, locationIO))
-      _             <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO))
+      _             <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO, parameters))
     } yield fromAddresses.map { case S3Address(b, k) => S3Location(b, k) }
 
   /** upload a large directory by doing a distcopy from hdfs to s3 */
-  def uploadDirectory(from: HdfsLocation, to: S3Location, locationIO: LocationIO): RIO[List[Location]] =
+  def uploadDirectory(from: HdfsLocation, to: S3Location, locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] =
     for {
       fromPaths <- Hdfs.globFilesRecursively(new Path(from.path)).run(locationIO.configuration)
       mappings  <- fromPaths.traverseU(createUploadMapping(to, locationIO))
-      _         <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO))
+      _         <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO, parameters))
     } yield fromPaths.map(p => HdfsLocation(p.toString))
 
   /** @return true if the path exists */
@@ -43,8 +43,11 @@ object DistCopy {
     address.exists.execute(locationIO.s3Client)
 
   /** @return a configuration for dist copy based on the current LocationIO configuration */
-  def distCopyConfiguration(locationIO: LocationIO): DistCopyConfiguration =
-    DistCopyConfiguration.Default.copy(hdfs = locationIO.configuration, client = locationIO.s3Client)
+  def distCopyConfiguration(locationIO: LocationIO, parameters: DistCopyParameters): DistCopyConfiguration =
+    DistCopyConfiguration(
+        hdfs = locationIO.configuration,
+        client = locationIO.s3Client,
+        parameters)
 
   /** create a Download mapping for a file if it doesn't exist */
   def createDownloadMapping(to: HdfsLocation, locationIO: LocationIO)(address: S3Address): RIO[Option[DownloadMapping]] = {

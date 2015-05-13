@@ -101,13 +101,13 @@ object SynchronizedInputsOutputs {
    *
    * @return the list of all synchronized files
    */
-  def synchronizeInputs(inputs: List[SynchronizedLocation], locationIO: LocationIO): RIO[List[Location]] = {
+  def synchronizeInputs(inputs: List[SynchronizedLocation], locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] = {
     inputs.traverseU(_.fold(
       hdfs             => RIO.ok(Nil: List[Location]),
       local            => RIO.ok(Nil: List[Location]),
       (local,   hdfs)  => locationIO.syncFiles(LocalLocation(local), HdfsLocation(hdfs)),
       (pattern, local) => locationIO.syncFiles(S3Location(pattern.bucket, pattern.unknown), LocalLocation(local)),
-      (pattern, hdfs)  => copyFromS3ToHdfs(S3Location(pattern.bucket, pattern.unknown), HdfsLocation(hdfs), locationIO)
+      (pattern, hdfs)  => copyFromS3ToHdfs(S3Location(pattern.bucket, pattern.unknown), HdfsLocation(hdfs), locationIO, parameters)
     )).map(_.flatten)
   }
 
@@ -117,13 +117,13 @@ object SynchronizedInputsOutputs {
    *
    * @return the list of all synchronized files
    */
-  def synchronizeOutputs(outputLocations: List[SynchronizedLocation], locationIO: LocationIO): RIO[List[Location]] =
+  def synchronizeOutputs(outputLocations: List[SynchronizedLocation], locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] =
     outputLocations.traverseU(_.fold(
       hdfs             => RIO.ok(Nil: List[Location]),
       local            => RIO.ok(Nil: List[Location]),
       (local,   hdfs)  => locationIO.syncFiles(LocalLocation(local), HdfsLocation(hdfs)),
       (pattern, local) => locationIO.syncFiles(LocalLocation(local), S3Location(pattern.bucket, pattern.unknown)),
-      (pattern, hdfs)  => copyFromHdfsToS3(HdfsLocation(hdfs), S3Location(pattern.bucket, pattern.unknown), locationIO)
+      (pattern, hdfs)  => copyFromHdfsToS3(HdfsLocation(hdfs), S3Location(pattern.bucket, pattern.unknown), locationIO, parameters)
     )).map(_.flatten)
 
   /** @return true if this configuration is for a cluster job (not local) */
@@ -149,17 +149,17 @@ object SynchronizedInputsOutputs {
     }
 
   /** @return the list of all copied files */
-  def copyFromS3ToHdfs(source: S3Location, target: HdfsLocation, locationIO: LocationIO): RIO[List[Location]] =
+  def copyFromS3ToHdfs(source: S3Location, target: HdfsLocation, locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] =
     locationIO.isDirectory(source) >>= { isDirectory =>
       if (!isDirectory) locationIO.syncFile(source, target).as(List(source))
-      else downloadDirectory(source, target, locationIO)
+      else downloadDirectory(source, target, locationIO, parameters)
     }
 
   /** @return the list of all copied files */
-  def copyFromHdfsToS3(source: HdfsLocation, target: S3Location, locationIO: LocationIO): RIO[List[Location]] =
+  def copyFromHdfsToS3(source: HdfsLocation, target: S3Location, locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] =
     locationIO.isDirectory(source) >>= { isDirectory =>
       if (!isDirectory) locationIO.syncFile(source, target).as(List(source))
-      else uploadDirectory(source, target, locationIO)
+      else uploadDirectory(source, target, locationIO, parameters)
     }
 }
 
