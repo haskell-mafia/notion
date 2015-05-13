@@ -2,15 +2,12 @@ package com.ambiata.notion.distcopy
 
 import com.ambiata.disorder._
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
-import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.poacher.hdfs._
 import com.ambiata.poacher.hdfs.Arbitraries._
 import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3._
 import com.ambiata.saws.testing.Arbitraries._
-import MemoryConversions._
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.specs2._
@@ -36,11 +33,7 @@ Download files from S3 to HDFS
     DistCopyConfiguration(
         c
       , client
-      , 1
-      , 1
-      , 10.mb
-      , 10.mb
-      , 100.mb
+      , DistCopyParameters.createDefault(mappersNumber = 1)
     )
 
   override implicit def defaultParameters: Parameters =

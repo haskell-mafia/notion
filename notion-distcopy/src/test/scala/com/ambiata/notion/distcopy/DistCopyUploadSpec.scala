@@ -11,7 +11,6 @@ import com.ambiata.saws.core.Clients
 import com.ambiata.saws.s3._
 import com.ambiata.notion.core._
 import com.ambiata.saws.testing.Arbitraries._
-import MemoryConversions._
 
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -41,11 +40,7 @@ Upload files from HDFS to S3
     DistCopyConfiguration(
         c
       , client
-      , 1
-      , 1
-      , 10.mb
-      , 10.mb
-      , 100.mb
+      , DistCopyParameters.createDefault(mappersNumber = 1)
     )
 
   def uploadFile = propNoShrink((s3: S3Temporary, hdfs: HdfsTemporary, data: BigData) => for {
@@ -77,7 +72,7 @@ Upload files from HDFS to S3
     files = file1 +: files1
     d  <- hdfs.path.run(c)
     _  <- files.map(f => new Path(d, f.path)).traverse(Hdfs.write(_, data).run(c))
-    _  <- DistCopy.uploadDirectory(HdfsLocation(d.toString), to, io)
+    _  <- DistCopy.uploadDirectory(HdfsLocation(d.toString), to, io, DistCopyParameters.createDefault(mappersNumber = 1))
     ks <- io.listS3(to)
     ds <- ks.traverse(io.readUtf8)
   } yield ds ==== files.as(data))

@@ -78,14 +78,17 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   var retryCount: Int = 0
 
   override def setup(context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
+    // get the default mapper parameter values
+    val parameters = DistCopyMapperParameters.Default
+
     partSize =
-      context.getConfiguration.getLong(PartSize, DistCopyConfiguration.Default.partSize.toBytes.value)
+      context.getConfiguration.getLong(PartSize, parameters.partSize.toBytes.value)
     readLimit =
-      context.getConfiguration.getInt(ReadLimit, DistCopyConfiguration.Default.readLimit.toBytes.value.toInt)
+      context.getConfiguration.getInt(ReadLimit, parameters.readLimit.toBytes.value.toInt)
     multipartUploadThreshold =
-      context.getConfiguration.getLong(MultipartUploadThreshold, DistCopyConfiguration.Default.multipartUploadThreshold.toBytes.value)
+      context.getConfiguration.getLong(MultipartUploadThreshold, parameters.multipartUploadThreshold.toBytes.value)
     retryCount =
-      context.getConfiguration.getInt(RetryCount, DistCopyConfiguration.Default.retryCount)
+      context.getConfiguration.getInt(RetryCount, parameters.retryCount)
 
     // create a transfer manager for all uploads to spare resources
     // don't shut it down after the upload because that shuts down the client
