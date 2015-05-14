@@ -28,7 +28,7 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
    the full path of the file to copy $createDownloadMappingForADirectory
 
   An upload mapping must contain
-   the full path of the file to copy $createUploadMappingForADirectory
+    the path of the file to copy relative to the from dir $createUploadMappingForADirectory
 """
 
   def downloadMappingIsSome = prop { (s3Temp: S3Temporary, hdfsTemp: HdfsTemporary) =>
@@ -52,7 +52,7 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
     for {
       path    <- hdfsTemp.path.run(configuration)
       address <- s3Temp.pattern.execute(s3Client)
-      result  <- DistCopy.createUploadMapping(S3Location(address.bucket, address.unknown), locationIO)(path)
+      result  <- DistCopy.createUploadMapping(S3Location(address.bucket, address.unknown), HdfsLocation(path.getParent.toUri.getPath), locationIO)(path)
     } yield result must beSome
   }
 
@@ -60,9 +60,9 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
     val result = for {
       path    <- hdfsTemp.path.run(configuration)
       prefix  <- s3Temp.prefix.execute(s3Client)
-      address =  S3Address(prefix.bucket, prefix.prefix + path.toUri.getPath)
+      address =  S3Address(prefix.bucket, (DirPath.unsafe(prefix.prefix) </> FilePath.unsafe(path.getName)).path)
       _       <- address.put("old lines").execute(s3Client)
-      _       <- DistCopy.createUploadMapping(S3Location(prefix.bucket, prefix.prefix), locationIO)(path)
+      _       <- DistCopy.createUploadMapping(S3Location(prefix.bucket, prefix.prefix), HdfsLocation(path.getParent.toUri.getPath), locationIO)(path)
     } yield ()
 
     result must beFail
@@ -82,8 +82,8 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
       dir     <- hdfsTemp.path.run(configuration)
       path    =  new Path(dir, filePath.path)
       address <- s3Temp.pattern.execute(s3Client)
-      result  <- DistCopy.createUploadMapping(S3Location(address.bucket, address.unknown), locationIO)(path)
-    } yield result must beSome(UploadMapping(path, S3Address(address.bucket, address.unknown + path.toUri.getPath)))
+      result  <- DistCopy.createUploadMapping(S3Location(address.bucket, address.unknown), HdfsLocation(dir.toUri.getPath), locationIO)(path)
+    } yield result must beSome(UploadMapping(path, S3Address(address.bucket, (DirPath.unsafe(address.unknown) </> filePath).path)))
   }
 
   /**

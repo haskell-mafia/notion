@@ -30,7 +30,7 @@ object DistCopy {
   def uploadDirectory(from: HdfsLocation, to: S3Location, locationIO: LocationIO, parameters: DistCopyParameters): RIO[List[Location]] =
     for {
       fromPaths <- Hdfs.globFilesRecursively(new Path(from.path)).run(locationIO.configuration)
-      mappings  <- fromPaths.traverseU(createUploadMapping(to, locationIO))
+      mappings  <- fromPaths.traverseU(createUploadMapping(to, from, locationIO))
       _         <- DistCopyJob.run(Mappings(mappings.toVector.flatten), distCopyConfiguration(locationIO, parameters))
     } yield fromPaths.map(p => HdfsLocation(p.toString))
 
@@ -59,8 +59,8 @@ object DistCopy {
   }
 
   /** create an Upload mapping for a file, but fail if it already exist to make sure we don't override anything by accident */
-  def createUploadMapping(to: S3Location, locationIO: LocationIO)(path: Path): RIO[Option[UploadMapping]] = {
-    val toAddress = S3Address(to.bucket, to.key + path.toUri.getPath)
+  def createUploadMapping(to: S3Location, from: HdfsLocation, locationIO: LocationIO)(path: Path): RIO[Option[UploadMapping]] = {
+    val toAddress = S3Address(to.bucket, (DirPath.unsafe(to.key) </> FilePath.unsafe(path.toUri.getPath).relativeTo(DirPath.unsafe(from.path))).path)
     addressExist(toAddress, locationIO).flatMap { exists =>
       if (exists) RIO.fail(s"${toAddress.render} exists already and cannot be overwritten")
       else        RIO.ok(Some(UploadMapping(path, toAddress)))
