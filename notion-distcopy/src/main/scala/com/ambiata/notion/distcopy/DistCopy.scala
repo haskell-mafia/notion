@@ -10,7 +10,44 @@ import org.apache.hadoop.fs._
 import scalaz.Scalaz._
 
 /**
- * Copy functions between Hdfs and S3
+ *
+ * Copy functions between Hdfs and S3.
+ *
+ * Those functions are used to synchronize S3 files to a Hdfs sync directory (see SynchronizedInputsOutputs)
+ *
+ *  Some notes about the download/upload functionality
+ *
+ *  1. Download
+ *
+ * For example we have:
+ *
+ *   s3://bucket/food/fruit/apple
+ *   s3://bucket/food/fruit/pear
+ *   s3://bucket/painting/fruit/apple
+ *
+ *  And we want to download files from s3://bucket/food to hdfs:///data
+ *  The download will create the following files:
+ *
+ *   hdfs:///data/food/fruit/apple
+ *   hdfs:///data/food/fruit/pear
+ *
+ * Note that we don't create file where the name would be relative to the source directory (i.e. not hdfs:///data/fruit/apple)
+ * because another download, from another directory like s3://bucket/painting, could create conflicts (with the bucket/painting/fruit/apple file)
+ *
+ * 2. Upload
+ *
+ * On the other hand when we upload files we create keys which are relative to the source directory.
+ *
+ * For example if we have the following files
+ *
+ *   hdfs:///data/food/fruit/apple
+ *   hdfs:///data/food/fruit/pear
+ *
+ * and we upload the hdfs:///data/food directory to s3://bucket/results, we get:
+ *
+ *   s3://bucket/results/fruit/apple
+ *   s3://bucket/results/fruit/pear
+ *
  */
 object DistCopy {
 
