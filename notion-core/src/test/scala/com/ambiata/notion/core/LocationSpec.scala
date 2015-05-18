@@ -18,7 +18,13 @@ class LocationSpec extends Specification with ScalaCheck { def is = s2"""
 
  A Location can be serialized/deserialized to/from Json $json
 
+ The render/fromUri methods are symmetrical $renderFromUri
+
 """
 
   def json = prop(CodecJson.derived[Location].codecLaw.encodedecode _)
+
+  def renderFromUri = prop { location: Location =>
+    fromUri(location.render) ==== \/-(location)
+  }
 }

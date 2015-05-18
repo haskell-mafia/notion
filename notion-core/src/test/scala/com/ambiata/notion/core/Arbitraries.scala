@@ -23,10 +23,15 @@ object Arbitraries {
   }
 
   implicit def LocalLocationArbitrary: Arbitrary[LocalLocation] =
-    Arbitrary(genPath.map(p => LocalLocation("file:///"+p)))
+    Arbitrary {
+      for {
+        relative <- arbitrary[Boolean]
+        p        <- genPath
+      } yield if (relative) LocalLocation(p) else LocalLocation("/"+p)
+    }
 
   implicit def HdfsLocationArbitrary: Arbitrary[HdfsLocation] =
-    Arbitrary(genPath.map(p => HdfsLocation("hdfs:///"+p)))
+    Arbitrary(genPath.map(p => HdfsLocation("/"+p)))
 
   implicit def S3LocationArbitrary: Arbitrary[S3Location] =
     Arbitrary(S3PatternArbitrary.arbitrary.map { case S3Pattern(b, k) => S3Location(b, k) })
