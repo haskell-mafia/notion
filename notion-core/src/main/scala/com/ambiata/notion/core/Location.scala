@@ -27,7 +27,8 @@ sealed trait Location {
 
 case class HdfsLocation(path: String) extends Location {
 
-  def render: String = path
+  def render: String =
+    "hdfs://"+path
 
   def dirPath  = DirPath.unsafe(path)
   def filePath = FilePath.unsafe(path)
@@ -42,7 +43,8 @@ object HdfsLocation {
 }
 
 case class S3Location(bucket: String, key: String) extends Location {
-  def render: String = bucket+"/"+key
+  def render: String =
+    "s3://"+bucket+"/"+key
 
   def map(f: DirPath => DirPath): Location =
     copy(key = f(DirPath.unsafe(key)).path)
@@ -53,7 +55,9 @@ case class LocalLocation(path: String) extends Location {
   def dirPath  = DirPath.unsafe(path)
   def filePath = FilePath.unsafe(path)
 
-  def render: String = path
+  def render: String =
+    if (path.startsWith("/")) "file://"+path
+    else                      path
 
   def map(f: DirPath => DirPath): Location =
     copy(path = f(dirPath).path)
