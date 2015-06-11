@@ -46,6 +46,7 @@ object build extends Build {
       depend.scalaz  ++
       depend.argonaut ++
       depend.mundane ++
+      depend.origami ++
       depend.poacher(version.value) ++
       depend.saws    ++
       depend.specs2  ++
