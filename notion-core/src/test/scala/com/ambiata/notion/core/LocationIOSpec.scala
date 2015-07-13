@@ -46,10 +46,10 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     new Parameters(minTestsOk = 5, workers = 3, maxSize = 10)
 
   def isDirectory = prop((loc: LocationTemporary, id: Ident, data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p </> FilePath.unsafe(id.value), data)
-    e <- i.isDirectory(p)
+    p  <- loc.location
+    i  <- loc.io
+    _  <- i.writeUtf8(p </> FilePath.unsafe(id.value), data)
+    e  <- i.isDirectory(p)
   } yield e ==== true)
 
   def isFile = prop((loc: LocationTemporary, data: String) => for {

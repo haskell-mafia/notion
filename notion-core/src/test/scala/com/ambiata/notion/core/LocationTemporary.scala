@@ -19,11 +19,11 @@ case class LocationTemporary(t: T, path: String, client: AmazonS3Client, conf: C
     s"LocationTemporary($t, $path)"
 
   def location: RIO[Location] = t match {
-    case (T.Posix) =>
+    case T.Posix =>
       localLocation
-    case (T.S3) =>
+    case T.S3 =>
       s3Location
-    case (T.Hdfs) =>
+    case T.Hdfs =>
       hdfsLocation
   }
 
@@ -43,6 +43,16 @@ case class LocationTemporary(t: T, path: String, client: AmazonS3Client, conf: C
 }
 
 object LocationTemporary {
+
+  /** @return an arbitrary location where the path possibly ends with a / */
   implicit def LocationTemporaryArbitrary: Arbitrary[LocationTemporary] =
-    Arbitrary(arbitrary[T].map(LocationTemporary(_, java.util.UUID.randomUUID().toString, Clients.s3, new Configuration)))
+    Arbitrary {
+      val path = java.util.UUID.randomUUID.toString
+
+      arbitrary[T].flatMap { t =>
+        val locationTemporary = LocationTemporary(t, path, Clients.s3, new Configuration)
+        val locationDirTemporary = LocationTemporary(t, path + "/", Clients.s3, new Configuration)
+        Gen.oneOf(locationTemporary, locationDirTemporary)
+      }
+    }
 }

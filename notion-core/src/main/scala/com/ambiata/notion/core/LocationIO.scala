@@ -48,7 +48,7 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
   /** @return true if the location can contain other locations */
   def isDirectory(location: Location): RIO[Boolean] = location match {
     case l @ LocalLocation(path)     => RIO.safe[Boolean](new File(path).isDirectory)
-    case s @ S3Location(bucket, key) => S3Pattern(bucket, key + "/").determine.map(_.exists(_.isRight)).execute(s3Client)
+    case s @ S3Location(bucket, key) => S3Pattern(bucket, key).determine.map(_.exists(_.isRight)).execute(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.isDirectory(new Path(path)).run(configuration)
   }
 
