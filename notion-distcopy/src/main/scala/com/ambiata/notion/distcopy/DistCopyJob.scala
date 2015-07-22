@@ -20,6 +20,8 @@ import org.apache.hadoop.mapreduce.{Mapper, Job, Counter}
 
 import DistCopyJob._
 
+import scala.collection.JavaConverters._
+
 import scalaz._, Scalaz._, effect.Effect._
 
 object DistCopyJob {
@@ -28,7 +30,7 @@ object DistCopyJob {
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
 
-  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[Unit] = for {
+  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[DistCopyStats] = for {
     job <- RIO.safe[Job](Job.getInstance(conf.hdfs))
     ctx <- RIO.safe[MrContext](MrContext.newContext("notion-distcopy-sync", job))
     _   <- RIO.safe[Unit]({
@@ -53,7 +55,10 @@ object DistCopyJob {
     })
     b   <- RIO.safe[Boolean] (job.waitForCompletion(true))
     _   <- RIO.unless(b, RIO.fail("notion dist-copy failed."))
-  } yield ()
+    cnt <- RIO.safe(job.getCounters.getGroup("notion"))
+    stats = cnt.iterator().asScala.map(c => c.getName -> c.getValue).toMap
+  } yield DistCopyStats(ctx.id.value, stats)
+
 }
 
 /*
@@ -196,6 +201,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       case Ok(_) =>
         ()
     }
+
+
   }
 
   override def cleanup(context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
