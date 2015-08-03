@@ -66,4 +66,7 @@ object DistCopyStats {
     metric
   }
 
+  def empty: DistCopyStats = {
+    DistCopyStats("empty", Map.empty)
+  }
 }
