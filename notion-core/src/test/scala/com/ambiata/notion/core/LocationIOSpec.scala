@@ -115,7 +115,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     _ <- i.writeUtf8(p </> FilePath.unsafe(dp.second.value), data)
     r <- i.list(p)
     l = r.length
-  } yield r.map(_.render.split("/").last).toSet -> l ==== Set(dp.first.value, dp.second.value) -> 2)
+  } yield r.toSet -> l ==== Set(dp.first.value, dp.second.value).map(FileName.unsafe).map(p </> _) -> 2)
 
   def exists = prop((loc: LocationTemporary, data: String) => for {
     p <- loc.location
