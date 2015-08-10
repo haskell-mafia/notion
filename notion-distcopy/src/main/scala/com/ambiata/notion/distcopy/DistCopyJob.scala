@@ -30,35 +30,37 @@ object DistCopyJob {
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
 
-  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[DistCopyStats] = for {
-    job <- RIO.safe[Job](Job.getInstance(conf.hdfs))
-    ctx <- RIO.safe[MrContext](MrContext.newContext("notion-distcopy-sync", job))
-    _   <- RIO.safe[Unit]({
-      job.setJobName(ctx.id.value)
-      job.setInputFormatClass(classOf[DistCopyInputFormat])
-      job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
-      job.getConfiguration.setInt("mapreduce.map.maxattempts", 1)
-      job.setNumReduceTasks(0)
-      job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
-      job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
-      job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
-    })
-    _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, conf.mappersNumber)
-    _   <- RIO.safe[Unit]({
-      job.setJarByClass(classOf[DistCopyMapper])
-      job.setMapperClass(classOf[DistCopyMapper])
-      job.setMapOutputKeyClass(classOf[NullWritable])
-      job.setMapOutputValueClass(classOf[NullWritable])
-      val tmpout = new Path(ctx.output, "distcopy")
-      job.setOutputFormatClass(classOf[TextOutputFormat[_, _]])
-      FileOutputFormat.setOutputPath(job, tmpout)
-    })
-    b   <- RIO.safe[Boolean] (job.waitForCompletion(true))
-    _   <- RIO.unless(b, RIO.fail("notion dist-copy failed."))
-    cnt <- RIO.safe(job.getCounters.getGroup("notion"))
-    stats = cnt.iterator().asScala.map(c => c.getName -> c.getValue).toMap
-  } yield DistCopyStats(ctx.id.value, stats)
-
+  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[DistCopyStats] =
+    if (mappings.mappings.length == 0) RIO.ok(DistCopyStats.empty)
+    else for {
+      job <- RIO.safe[Job](Job.getInstance(conf.hdfs))
+      ctx <- RIO.safe[MrContext](MrContext.newContext("notion-distcopy-sync", job))
+      _   <- RIO.safe[Unit]({
+        job.setJobName(ctx.id.value)
+        job.setInputFormatClass(classOf[DistCopyInputFormat])
+        job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
+        job.getConfiguration.setInt("mapreduce.map.maxattempts", 1)
+        job.setNumReduceTasks(0)
+        job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
+        job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
+        job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
+      })
+      n   = Math.min(mappings.mappings.length, conf.mappersNumber)
+      _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, n)
+      _   <- RIO.safe[Unit]({
+        job.setJarByClass(classOf[DistCopyMapper])
+        job.setMapperClass(classOf[DistCopyMapper])
+        job.setMapOutputKeyClass(classOf[NullWritable])
+        job.setMapOutputValueClass(classOf[NullWritable])
+        val tmpout = new Path(ctx.output, "distcopy")
+        job.setOutputFormatClass(classOf[TextOutputFormat[_, _]])
+        FileOutputFormat.setOutputPath(job, tmpout)
+      })
+      b   <- RIO.safe[Boolean] (job.waitForCompletion(true))
+      _   <- RIO.unless(b, RIO.fail("notion dist-copy failed."))
+      cnt <- RIO.safe(job.getCounters.getGroup("notion"))
+      stats = cnt.iterator().asScala.map(c => c.getName -> c.getValue).toMap
+    } yield DistCopyStats(ctx.id.value, stats)
 }
 
 /*

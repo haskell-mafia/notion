@@ -29,6 +29,9 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
 
   An upload mapping must contain
     the path of the file to copy relative to the from dir $createUploadMappingForADirectory
+
+  Job should return successfully
+    with an empty stats object if the mappings is empty $emptyMappings
 """
 
   def downloadMappingIsSome = prop { (s3Temp: S3Temporary, hdfsTemp: HdfsTemporary) =>
@@ -86,6 +89,13 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
     } yield result must beSome(UploadMapping(path, S3Address(address.bucket, (DirPath.unsafe(address.unknown) </> filePath).path)))
   }
 
+  def emptyMappings =
+    for {
+      c <- ConfigurationTemporary.random.conf
+      d = DistCopyConfiguration(c, Clients.s3, DistCopyParameters.createDefault(mappersNumber = 1))
+      r <- DistCopyJob.run(Mappings(Vector.empty), d)
+    } yield r must_==(DistCopyStats.empty)
+
   /**
    * HELPERS
    */
@@ -101,4 +111,3 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
     f <- Gen.oneOf("", "/")
   } yield HdfsTemporary(s"temporary-${java.util.UUID.randomUUID().toString}/" + z + f))
 }
-
