@@ -6,22 +6,20 @@ import java.util.UUID
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.com.amazonaws.services.s3.transfer.{TransferManagerConfiguration, TransferManager}
 import com.ambiata.mundane.control._
-import com.ambiata.mundane.error.Throwables
 import com.ambiata.mundane.io._
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.poacher.mr._
 import com.ambiata.saws.core._
 import com.ambiata.saws.s3.{S3, S3Address}
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path, FSDataOutputStream, FSDataInputStream}
+import org.apache.hadoop.fs.{FileSystem, Path, FSDataOutputStream}
 import org.apache.hadoop.io._
 import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, TextOutputFormat}
 import org.apache.hadoop.mapreduce.{Mapper, Job, Counter}
-
+import DistCopyStats._
 import DistCopyJob._
 
 import scala.collection.JavaConverters._
-
 import scalaz._, Scalaz._, effect.Effect._
 
 object DistCopyJob {
@@ -71,12 +69,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   private var transferManager: TransferManager = null
   val client = Clients.s3
   var totalBytesUploaded: Counter = null
-  var totalFilesUploaded: Counter = null
   var totalBytesDownloaded: Counter = null
-  var totalMegabytesDownloaded: Counter = null
-  var totalGigabytesDownloaded: Counter = null
-  var totalMegabytesUploaded: Counter = null
-  var totalGigabytesUploaded: Counter = null
+  var totalFilesUploaded: Counter = null
   var totalFilesDownloaded: Counter = null
   var retryCounter: Counter = null
   var partSize: Long = 0
@@ -104,15 +98,11 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     configuration.setMultipartUploadThreshold(multipartUploadThreshold)
     transferManager = new TransferManager(client)
     transferManager.setConfiguration(configuration)
-    totalBytesUploaded = context.getCounter("notion", "total.bytes.uploaded")
-    totalMegabytesUploaded = context.getCounter("notion", "total.megabytes.uploaded")
-    totalGigabytesUploaded = context.getCounter("notion", "total.gigabytes.uploaded")
-    totalFilesUploaded = context.getCounter("notion", "total.files.uploaded")
-    totalBytesDownloaded = context.getCounter("notion", "total.bytes.downloaded")
-    totalMegabytesDownloaded = context.getCounter("notion", "total.megabytes.downloaded")
-    totalGigabytesDownloaded = context.getCounter("notion", "total.gigabytes.downloaded")
-    totalFilesDownloaded = context.getCounter("notion", "total.files.downloaded")
-    retryCounter = context.getCounter("notion", "total.files.retried")
+    totalBytesUploaded        = context.getCounter("notion", UPLOADED_BYTES)
+    totalBytesDownloaded      = context.getCounter("notion", DOWNLOADED_BYTES)
+    totalFilesUploaded        = context.getCounter("notion", UPLOADED_FILES)
+    totalFilesDownloaded      = context.getCounter("notion", DOWNLOADED_FILES)
+    retryCounter              = context.getCounter("notion", RETRIED_FILES)
   }
 
   override def map(key: NullWritable, value: Mapping, context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
@@ -130,21 +120,16 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         _               = println(s"Downloading: ${from.render} ===> $destination")
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
-        _               <- (Aws.using(S3Action.safe[FSDataOutputStream](FileSystem.get(context.getConfiguration).create(tmpDestination))) {
+        _               <- Aws.using(S3Action.safe[FSDataOutputStream](FileSystem.get(context.getConfiguration).create(tmpDestination))) {
           outputStream => from.withStreamMultipart(
-              Bytes(partSize)
+            Bytes(partSize)
             , in => {
-                val counted = DownloadInputStream(in, i => {
-                  totalBytesDownloaded.increment(i)
-                  val bytes = totalBytesDownloaded.getValue
-                  totalMegabytesDownloaded.setValue(bytes / 1024 / 1024)
-                  totalGigabytesDownloaded.setValue(bytes / 1024 / 1024 / 1024)
-                })
-                Streams.pipe(counted, outputStream)
-              }
+              val counted = DownloadInputStream(in, i => totalBytesDownloaded.increment(i))
+              Streams.pipe(counted, outputStream)
+            }
             , () => context.progress()
           )
-        }).retry(retryCount, retryHandler)
+        }.retry(retryCount, retryHandler)
         _               = println(s"Moving: $tmpDestination ===> $destination")
         _               <- S3Action.fromRIO(Hdfs.mkdir(destination.getParent).run(context.getConfiguration))
         _               <- S3Action.fromRIO(Hdfs.mv(tmpDestination, destination).run(context.getConfiguration))
@@ -164,30 +149,22 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         // Wrapping FSDataInputStream in BufferedInputStream to fix overflows on reset of the stream
         _        <- (Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
           inputStream => {
-            def update() = {
-              val bytes = totalBytesUploaded.getValue
-              totalMegabytesUploaded.setValue(bytes / 1024 / 1024)
-              totalGigabytesUploaded.setValue(bytes / 1024 / 1024 / 1024)
-            }
-
             (if (length > partSize) {
               // This should really be handled by `saws`
               println(s"\tRunning multi-part upload")
               destination.putStreamMultiPartWithTransferManager(
-                  transferManager
+                transferManager
                 , inputStream
                 , readLimit
                 , (i: Long) => {
-                    totalBytesUploaded.increment(i)
-                    update()
-                    context.progress()
-                  }
+                  totalBytesUploaded.increment(i)
+                  context.progress()
+                }
                 , metadata
               ).flatMap(upload => S3Action.safe(upload()))
             } else {
               println(s"\tRunning stream upload")
               totalBytesUploaded.increment(length)
-              update()
               destination.putStreamWithMetadata(inputStream, readLimit, metadata)
             }).void
           }
