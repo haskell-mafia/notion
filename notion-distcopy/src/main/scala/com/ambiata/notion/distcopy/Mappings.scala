@@ -5,6 +5,7 @@ import com.ambiata.saws.s3._
 import org.apache.hadoop.fs.Path
 
 import scala.collection.JavaConverters._
+import scalaz.Monoid
 
 case class Mappings(mappings: Vector[Mapping]) {
   def toThrift: MappingsLookup =
@@ -15,9 +16,27 @@ case class Mappings(mappings: Vector[Mapping]) {
         MappingLookup.download(new DownloadMappingLookup(f.bucket, f.key, t.toString))
     }).asJava)
 
+  def isEmpty: Boolean =
+    mappings.isEmpty
+
+  def distinct: Mappings =
+    Mappings(mappings.distinct)
+
 }
 
 object Mappings {
+
+  implicit def MappingsMonoid: Monoid[Mappings] = new Monoid[Mappings] {
+    def zero: Mappings =
+      Mappings.empty
+
+    def append(m1: Mappings, m2: =>Mappings): Mappings =
+      Mappings(m1.mappings ++ m2.mappings)
+  }
+
+  def empty: Mappings =
+    Mappings(Vector())
+
   def fromThrift(m: MappingsLookup): Mappings =
     Mappings(m.mappings.asScala.toVector.map(m =>
       if (m.isSetUpload) {

@@ -94,7 +94,7 @@ class DistCopySpec extends AwsScalaCheckSpec(tests = 5) { def is = s2"""
       c <- ConfigurationTemporary.random.conf
       d = DistCopyConfiguration(c, Clients.s3, DistCopyParameters.createDefault(mappersNumber = 1))
       r <- DistCopyJob.run(Mappings(Vector.empty), d)
-    } yield r must_==(DistCopyStats.empty)
+    } yield r must beNone
 
   /**
    * HELPERS

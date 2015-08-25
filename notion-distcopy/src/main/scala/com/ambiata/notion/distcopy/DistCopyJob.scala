@@ -18,7 +18,7 @@ import org.apache.hadoop.mapreduce.lib.output.{FileOutputFormat, TextOutputForma
 import org.apache.hadoop.mapreduce.{Mapper, Job, Counter}
 import DistCopyStats._
 import DistCopyJob._
-
+import org.joda.time._
 import scala.collection.JavaConverters._
 import scalaz._, Scalaz._, effect.Effect._
 
@@ -28,8 +28,8 @@ object DistCopyJob {
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
 
-  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[DistCopyStats] =
-    if (mappings.mappings.length == 0) RIO.ok(DistCopyStats.empty)
+  def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[Option[DistCopyStats]] =
+    if (mappings.mappings.length == 0) RIO.ok(None)
     else for {
       job <- RIO.safe[Job](Job.getInstance(conf.hdfs))
       ctx <- RIO.safe[MrContext](MrContext.newContext("notion-distcopy-sync", job))
@@ -58,7 +58,7 @@ object DistCopyJob {
       _   <- RIO.unless(b, RIO.fail("notion dist-copy failed."))
       cnt <- RIO.safe(job.getCounters.getGroup("notion"))
       stats = cnt.iterator().asScala.map(c => c.getName -> c.getValue).toMap
-    } yield DistCopyStats(ctx.id.value, stats)
+    } yield Some(DistCopyStats(ctx.id.value, stats, DateTime.now))
 }
 
 /*
