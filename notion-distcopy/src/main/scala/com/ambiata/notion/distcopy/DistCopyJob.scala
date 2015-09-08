@@ -28,6 +28,14 @@ object DistCopyJob {
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
 
+  // additional counters for reading
+  // values on the hadoop console interactively
+  val UPLOADED_MBYTES   = "uploaded.mb"
+  val UPLOADED_GBYTES   = "uploaded.gb"
+  val DOWNLOADED_MBYTES = "downloaded.mb"
+  val DOWNLOADED_GBYTES = "downloaded.gb"
+
+
   def run(mappings: Mappings, conf: DistCopyConfiguration): RIO[Option[DistCopyStats]] =
     if (mappings.mappings.length == 0) RIO.ok(None)
     else for {
@@ -69,7 +77,11 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   private var transferManager: TransferManager = null
   val client = Clients.s3
   var totalBytesUploaded: Counter = null
+  var totalMegaBytesUploaded: Counter = null
+  var totalGigaBytesUploaded: Counter = null
   var totalBytesDownloaded: Counter = null
+  var totalMegaBytesDownloaded: Counter = null
+  var totalGigaBytesDownloaded: Counter = null
   var totalFilesUploaded: Counter = null
   var totalFilesDownloaded: Counter = null
   var retryCounter: Counter = null
@@ -99,7 +111,11 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     transferManager = new TransferManager(client)
     transferManager.setConfiguration(configuration)
     totalBytesUploaded        = context.getCounter("notion", UPLOADED_BYTES)
+    totalMegaBytesUploaded    = context.getCounter("notion", UPLOADED_MBYTES)
+    totalGigaBytesUploaded    = context.getCounter("notion", UPLOADED_GBYTES)
     totalBytesDownloaded      = context.getCounter("notion", DOWNLOADED_BYTES)
+    totalMegaBytesDownloaded  = context.getCounter("notion", DOWNLOADED_MBYTES)
+    totalGigaBytesDownloaded  = context.getCounter("notion", DOWNLOADED_GBYTES)
     totalFilesUploaded        = context.getCounter("notion", UPLOADED_FILES)
     totalFilesDownloaded      = context.getCounter("notion", DOWNLOADED_FILES)
     retryCounter              = context.getCounter("notion", RETRIED_FILES)
@@ -124,7 +140,11 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           outputStream => from.withStreamMultipart(
             Bytes(partSize)
             , in => {
-              val counted = DownloadInputStream(in, i => totalBytesDownloaded.increment(i))
+              val counted = DownloadInputStream(in, i => {
+                totalBytesDownloaded.increment(i)
+                totalMegaBytesDownloaded.increment(i / 1024 / 1024)
+                totalGigaBytesDownloaded.increment(i / 1024 / 1024 / 1024)
+              })
               Streams.pipe(counted, outputStream)
             }
             , () => context.progress()
@@ -158,6 +178,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
                 , readLimit
                 , (i: Long) => {
                   totalBytesUploaded.increment(i)
+                  totalMegaBytesUploaded.increment(i / 1024 / 1024)
+                  totalGigaBytesUploaded.increment(i / 1024 / 1024 / 1024)
                   context.progress()
                 }
                 , metadata
@@ -165,6 +187,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
             } else {
               println(s"\tRunning stream upload")
               totalBytesUploaded.increment(length)
+              totalMegaBytesUploaded.increment(length / 1024 / 1024)
+              totalGigaBytesUploaded.increment(length / 1024 / 1024 / 1024)
               destination.putStreamWithMetadata(inputStream, readLimit, metadata)
             }).void
           }
