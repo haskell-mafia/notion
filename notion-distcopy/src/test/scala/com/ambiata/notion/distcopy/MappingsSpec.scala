@@ -16,7 +16,16 @@ class MappingsSpec extends Specification with ScalaCheck { def is = s2"""
 
   ${ prop((m: Mappings) => Mappings.fromThrift(m.toThrift) ==== m) }
 
+ isEmpty  $isEmpty
+ distinct $distinct
+
 """
+
+  def isEmpty =
+    prop((mappings: Mappings) => mappings.isEmpty === mappings.mappings.isEmpty)
+
+  def distinct =
+    prop((mappings: Mappings) => mappings.distinct === Mappings(mappings.mappings.distinct))
 
   implicit def MappingsArbitrary: Arbitrary[Mappings] =
     Arbitrary(Gen.listOf(arbitrary[Mapping]).flatMap(i => Mappings(i.toVector)))

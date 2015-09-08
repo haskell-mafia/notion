@@ -1,72 +1,49 @@
 package com.ambiata.notion.distcopy
 
-import com.ambiata.com.amazonaws.services.cloudwatch.AmazonCloudWatchClient
-import com.ambiata.com.amazonaws.services.cloudwatch.model._
-import com.ambiata.saws.core._
+import com.ambiata.mundane.io.MemoryConversions._
+import com.ambiata.saws.cw._
+import com.ambiata.notion.distcopy.DistCopyStats._
+import org.joda.time.DateTime
 
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.mapreduce.{Mapper, Counter}
+case class DistCopyStats(hadoopJobId: String, counts: Map[String, Long], timestamp: DateTime) {
 
-import scala.collection.JavaConverters._
+  /** @return statistics for CloudWatch metrics */
+  def statisticsMetrics: StatisticsMetrics =
+    StatisticsMetrics(toStatistics, MetricDimensions.extendLongestPrefix(dimensions), timestamp)
 
-import scalaz._, Scalaz._
+  /** @return specific metric dimensions for these statistics */
+  def dimensions: List[MetricDimension] =
+    List(MetricDimension("job-id", hadoopJobId))
 
-case class DistCopyStats(name: String, counts: Map[String, Long])
+  /** @return CloudWatch statistics */
+  def toStatistics: Statistics = Statistics {
+    (memoryStats(UPLOADED_BYTES)          ++
+     memoryStats(DOWNLOADED_BYTES)        ++
+     countStat  (UPLOADED_FILES).toList   ++
+     countStat  (DOWNLOADED_FILES).toList ++
+     countStat  (RETRIED_FILES).toList).toMap
+  }
+
+  /** @return several statistics for different memory units */
+  def memoryStats(name: String): List[(String, StatisticsData)] =
+    counts.get(name).map(b => List(
+        (name,                               StatisticsData(b.toDouble,                         Bytes))
+      , (name.replace("bytes", "megabytes"), StatisticsData(b.bytes.toMegabytes.value.toDouble, Megabytes))
+      , (name.replace("bytes", "gigabytes"), StatisticsData(b.bytes.toGigabytes.value.toDouble, Gigabytes)))).toList.flatten
+
+  /** @return count statistics */
+  def countStat(name: String): Option[(String, StatisticsData)] =
+    counts.get(name).map(n => (name, StatisticsData(n.toDouble, Count)))
+
+}
 
 object DistCopyStats {
 
-  def publish(stats: DistCopyStats): CloudWatchAction[Unit] = {
-    val totalBytesUploaded = stats.counts.get("total.bytes.uploaded")
-    val totalMegabytesUploaded = stats.counts.get("total.megabytes.uploaded")
-    val totalGigabytesUploaded = stats.counts.get("total.gigabytes.uploaded")
-    val totalFilesUploaded = stats.counts.get("total.files.uploaded")
-    val totalBytesDownloaded = stats.counts.get("total.bytes.downloaded")
-    val totalMegabytesDownloaded = stats.counts.get("total.megabytes.downloaded")
-    val totalGigabytesDownloaded = stats.counts.get("total.gigabytes.downloaded")
-    val totalFilesDownloaded = stats.counts.get("total.files.downloaded")
-    val retryCounter = stats.counts.get("total.files.retried")
+  val UPLOADED_BYTES   = "uploaded.bytes"
+  val DOWNLOADED_BYTES = "downloaded.bytes"
+  val UPLOADED_FILES   = "uploaded.files"
+  val DOWNLOADED_FILES = "downloaded.files"
+  val RETRIED_FILES    = "retried.files"
 
-    val put: PutMetricDataRequest = new PutMetricDataRequest()
-    put.withNamespace("Ambiata/View")
-
-    val dim: Dimension = new Dimension()
-    dim.setName("Hadoop_Job_Id")
-    dim.setValue(stats.name)
-
-    val md: List[MetricDatum] = List(
-        totalBytesUploaded.map(metric("UploadByteCount", _, dim))
-      , totalBytesUploaded.map(metric("UploadByteCount", _, totals("bytes.uploaded")))
-      , totalMegabytesUploaded.map(metric("UploadMegabyteCount", _, totals("megabytes.uploaded")))
-      , totalGigabytesUploaded.map(metric("UploadGigabyteCount", _, totals("gigabytes.uploaded")))
-      , totalBytesDownloaded.map(metric("DownloadByteCount", _, dim))
-      , totalBytesDownloaded.map(metric("DownloadByteCount", _, totals("bytes.downloaded")))
-      , totalMegabytesDownloaded.map(metric("DownloadMegabyteCount", _, totals("megabytes.downloaded")))
-      , totalGigabytesDownloaded.map(metric("DownloadGigabyteCount", _, totals("gigabytes.downloaded")))
-      , retryCounter.map(metric("TotalRetries", _, totals("retry")))
-      , totalFilesUploaded.map(metric("TotalFilesUploaded", _, totals("files.uploaded")))
-      , totalFilesDownloaded.map(metric("TotalFilesDownloaded", _, totals("files.downloaded")))
-    ).flatten
-    md.foreach(put.withMetricData(_))
-    CloudWatchAction(_.putMetricData(put))
-  }
-
-  def totals(s: String): Dimension = {
-    val dim: Dimension = new Dimension()
-    dim.setName("Totals")
-    dim.setValue(s)
-    dim
-  }
-
-  def metric(name: String, value: Long, dim: Dimension): MetricDatum = {
-    val metric: MetricDatum = new MetricDatum()
-    metric.setMetricName(name)
-    metric.setUnit(StandardUnit.Count)
-    metric.setValue(value)
-    metric.setDimensions(dim.pure[List].asJava)
-    metric
-  }
-
-  def empty: DistCopyStats = {
-    DistCopyStats("empty", Map.empty)
-  }
 }
+
