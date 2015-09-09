@@ -140,11 +140,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           outputStream => from.withStreamMultipart(
             Bytes(partSize)
             , in => {
-              val counted = DownloadInputStream(in, i => {
-                totalBytesDownloaded.increment(i)
-                totalMegaBytesDownloaded.increment(i / 1024 / 1024)
-                totalGigaBytesDownloaded.increment(i / 1024 / 1024 / 1024)
-              })
+              val counted = DownloadInputStream(in, i => incrementCounters(totalBytesDownloaded, totalMegaBytesDownloaded, totalGigaBytesDownloaded, i))
               Streams.pipe(counted, outputStream)
             }
             , () => context.progress()
@@ -177,18 +173,14 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
                 , inputStream
                 , readLimit
                 , (i: Long) => {
-                  totalBytesUploaded.increment(i)
-                  totalMegaBytesUploaded.increment(i / 1024 / 1024)
-                  totalGigaBytesUploaded.increment(i / 1024 / 1024 / 1024)
+                  incrementCounters(totalBytesUploaded, totalMegaBytesUploaded, totalGigaBytesUploaded, i)
                   context.progress()
                 }
                 , metadata
               ).flatMap(upload => S3Action.safe(upload()))
             } else {
               println(s"\tRunning stream upload")
-              totalBytesUploaded.increment(length)
-              totalMegaBytesUploaded.increment(length / 1024 / 1024)
-              totalGigaBytesUploaded.increment(length / 1024 / 1024 / 1024)
+              incrementCounters(totalBytesUploaded, totalMegaBytesUploaded, totalGigaBytesUploaded, length)
               destination.putStreamWithMetadata(inputStream, readLimit, metadata)
             }).void
           }
@@ -204,8 +196,13 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       case Ok(_) =>
         ()
     }
+  }
 
-
+  def incrementCounters(bytesCounter: Counter, mbCounter: Counter, gbCounter: Counter, increment: Long): Unit = {
+    bytesCounter.increment(increment)
+    val bytes = bytesCounter.getValue
+    mbCounter.setValue(bytes / 1024 / 1024)
+    gbCounter.setValue(bytes / 1024 / 1024 / 1024)
   }
 
   override def cleanup(context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
