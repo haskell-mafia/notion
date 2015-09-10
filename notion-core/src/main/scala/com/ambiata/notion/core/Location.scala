@@ -91,6 +91,41 @@ object Location {
       e.getMessage.left
   }
 
+  def localLocationFromUri(s: String): String \/ Location =
+    try {
+      val uri = new java.net.URI(s)
+      uri.getScheme match {
+        case "file" =>
+          LocalLocation(uri.toURL.getFile).right
+        case null =>
+          LocalLocation(uri.getPath).right
+        case _ =>
+          s"Not a local location [${uri.getScheme}]".left
+      }
+    } catch { case e: java.net.URISyntaxException => e.getMessage.left }
+
+  def s3LocationFromUri(s: String): String \/ Location =
+    try {
+      val uri = new java.net.URI(s)
+      uri.getScheme match {
+        case "s3" =>
+          S3Location(uri.getHost, uri.getPath.drop(1)).right
+        case _ =>
+          s"Not a S3 location [${uri.getScheme}]".left
+      }
+    } catch { case e: java.net.URISyntaxException => e.getMessage.left }
+
+  def hdfsLocationFromUri(s: String): String \/ Location =
+    try {
+      val uri = new java.net.URI(s)
+      uri.getScheme match {
+        case "hdfs" =>
+          HdfsLocation(uri.getPath).right
+        case _ =>
+          s"Not a HDFS location [${uri.getScheme}]".left
+      }
+    } catch { case e: java.net.URISyntaxException => e.getMessage.left }
+
   implicit def LocationEncodeJson: EncodeJson[Location] =
     EncodeJson({
       case S3Location(b, k) => Json("s3"   := Json("bucket" := b, "key" := k))
