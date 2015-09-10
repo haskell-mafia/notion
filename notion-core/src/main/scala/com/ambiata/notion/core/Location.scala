@@ -91,6 +91,24 @@ object Location {
       e.getMessage.left
   }
 
+  def localLocationFromUri(s: String): String \/ Location =
+    fromUri(s).flatMap {
+      case l: LocalLocation => \/-(l)
+      case e => -\/("Expected a local location, got: "+e)
+    }
+
+  def s3LocationFromUri(s: String): String \/ Location =
+    fromUri(s).flatMap {
+      case l: S3Location => \/-(l)
+      case e => -\/("Expected a S3 location, got: "+e)
+    }
+
+  def hdfsLocationFromUri(s: String): String \/ Location =
+    fromUri(s).flatMap {
+      case l: HdfsLocation => \/-(l)
+      case e => -\/("Expected a HDFS location, got: "+e)
+    }
+
   implicit def LocationEncodeJson: EncodeJson[Location] =
     EncodeJson({
       case S3Location(b, k) => Json("s3"   := Json("bucket" := b, "key" := k))
