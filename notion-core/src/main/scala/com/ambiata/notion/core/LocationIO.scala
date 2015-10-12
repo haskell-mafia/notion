@@ -31,7 +31,7 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     Directories.list(local.dirPath).map(_.map(f => LocalLocation(f.path)))
 
   def listHdfs(hdfs: HdfsLocation): RIO[List[HdfsLocation]] =
-    Hdfs.globFilesRecursively(new Path(hdfs.path)).run(configuration).map(_.map(p => HdfsLocation(p.toString)))
+    Hdfs.globFilesRecursively(new Path(hdfs.path)).run(configuration).map(_.map(p => HdfsLocation(p.toUri.getPath)))
 
   def listS3(s3: S3Location): RIO[List[S3Location]] =
     S3Pattern(s3.bucket, s3.key).listKeys.execute(s3Client).map(_.map(k => S3Location(s3.bucket,  k)))
