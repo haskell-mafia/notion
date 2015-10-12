@@ -20,6 +20,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
    isDirectory                                          $isDirectory
    isFile                                               $isFile
+   isDirectory and isFile on S3                         $isDirectoryAndIsFile
    deleteAll                                            $deleteAll
    delete                                               $delete
    read / write lines                                   $readWriteLines
@@ -28,7 +29,8 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
    list                                                 $list
    exists                                               $exists
    syncFile                                             $syncFile
-   syncFiles                                            $syncFiles
+   syncFiles when target is a file                      $syncFilesWhenTargetIsAFile
+   syncFiles when target is a dir                       $syncFilesWhenTargetIsADir
    syncFile fails when trying to overwrite results      $syncFileFail
 
    first line of a file                                 $fileFirst
@@ -46,18 +48,29 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     new Parameters(minTestsOk = 5, workers = 3, maxSize = 10)
 
   def isDirectory = prop((loc: LocationTemporary, id: Ident, data: String) => for {
-    p <- loc.location
+    l <- loc.location
     i <- loc.io
-    _ <- i.writeUtf8(p </> FilePath.unsafe(id.value), data)
-    e <- i.isDirectory(p)
-  } yield e ==== true)
+    _ <- i.writeUtf8(l </> FilePath.unsafe(id.value), data)
+    d <- i.isDirectory(l)
+    f <- i.isFile(l)
+  } yield (d aka "isDirectory" must beTrue) and (f aka "isFile" must beFalse))
 
-  def isFile = prop((loc: LocationTemporary, data: String) => for {
-    p <- loc.location
+  def isFile = prop((loc: LocationTemporary, id: Ident, data: String) => for {
+    l <- loc.location.map(_ </> FilePath.unsafe(id.value))
     i <- loc.io
-    _ <- i.writeUtf8(p, data)
-    e <- i.isDirectory(p)
-  } yield e ==== false)
+    _ <- i.writeUtf8(l, data)
+    d <- i.isDirectory(l)
+    f <- i.isFile(l)
+  } yield (d aka "isDirectory" must beFalse) and (f aka "isFile" must beTrue))
+
+  def isDirectoryAndIsFile = prop((loc: LocationTemporary, k: Ident, data: String) => for {
+    p <- loc.s3Location
+    i <- loc.io
+    _ <- i.writeUtf8(p, data) // write a file for the key p
+    _ <- i.writeUtf8(p.map(_ </> FileName.unsafe(k.value)), data) // write a file for the key p/k
+    d <- i.isDirectory(p)
+    f <- i.isFile(p)
+  } yield (d aka "isDirectory" must beTrue) and (f aka "isFile" must beTrue))
 
   def deleteAll = prop((loc: LocationTemporary, dp: DistinctPair[Ident], data: String) => for {
     p <- loc.location
@@ -159,26 +172,32 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
     }
   }
 
-  def syncFiles = prop((from: LocationTemporary, isDirectory: Boolean, fileName: Ident, otherFileNames: List10[Ident], to: LocationTemporary, content: S) =>
+  def syncFilesWhenTargetIsAFile = prop((from: LocationTemporary, to: LocationTemporary, content: S) =>
+    for {
+      i      <- to.io
+      f      <- from.location.map(l => l.map(_.toFilePath.toDirPath)) // make sure there's not trailing / in the location
+      _      <- i.writeUtf8(f, content.value)
+      t      <- to.location
+      rs     <- i.syncFiles(f, t)
+      isFile <- i.isFile(t)
+    } yield "the target is a file" ==> isFile
+  )
+
+  def syncFilesWhenTargetIsADir = prop((from: LocationTemporary, fileName: Ident, otherFileNames: List10[Ident], to: LocationTemporary, content: S) =>
     for {
       i     <- to.io
       f     <- from.location
       // we need at least one file name to create a directory
       fileNames = (fileName +: otherFileNames.value).map(_.value).distinct
-      _     <-
-               if (isDirectory) fileNames.traverseU(name => i.writeUtf8(f </> FileName.unsafe(name), content.value))
-               else             i.writeUtf8(f, content.value)
-      t     <- to.location
-      rs    <- i.syncFiles(f, t)
-      ins   <- if (isDirectory) i.list(f) else RIO.ok(List(f))
-      fs    <- if (isDirectory) i.list(t) else RIO.ok(List())
-      isDir <- i.isDirectory(t)
+      _      <- fileNames.traverseU(name => i.writeUtf8(f </> FileName.unsafe(name), content.value))
+      t      <- to.location
+      rs     <- i.syncFiles(f, t)
+      ins    <- i.list(f)
+      fs     <- i.list(t)
+      isDir  <- i.isDirectory(t)
     } yield
-      if (isDirectory)
-        ("the target is a directory" ==> isDir) && (fs must haveSize(fileNames.size)) &&
-        ("the copied files are the list of files in the directory" ==> (rs ==== ins))
-      else
-        ("the target is not a directory" ==> !isDir) && (fs must haveSize(0))
+      ("the target is a directory" ==> isDir) && (fs must haveSize(fileNames.size)) &&
+      ("the copied files are the list of files in the directory" ==> (rs ==== ins))
   )
 
   def fileFirst = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>

@@ -1,5 +1,7 @@
 package com.ambiata.notion.core
 
+import com.ambiata.com.amazonaws.AmazonServiceException
+import com.ambiata.com.amazonaws.services.s3.model.ListObjectsRequest
 import com.ambiata.saws.core.{S3Action, Clients}
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
@@ -8,7 +10,6 @@ import com.ambiata.mundane.io._
 import com.ambiata.mundane.bytes.Buffer
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
-import org.apache.commons.io.IOUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import java.io.File
@@ -45,11 +46,24 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     case h @ HdfsLocation(path)      => Hdfs.exists(new Path(path)).run(configuration)
   }
 
-  /** @return true if the location can contain other locations */
+  /**
+   * @return true if the location can contain other locations
+   *         Note that a S3Location can both be a directory, meaning that it is an existing S3Prefix
+   *         and a file, meaning that it is an existing S3Address
+   */
   def isDirectory(location: Location): RIO[Boolean] = location match {
     case l @ LocalLocation(path)     => RIO.safe[Boolean](new File(path).isDirectory)
-    case s @ S3Location(bucket, key) => S3Pattern(bucket, key + "/").determine.map(_.exists(_.isRight)).execute(s3Client)
+    case s @ S3Location(bucket, key) => S3Prefix(bucket, key).exists.execute(s3Client)
     case h @ HdfsLocation(path)      => Hdfs.isDirectory(new Path(path)).run(configuration)
+  }
+
+  /**
+   * @return true if the location references a file.
+   */
+  def isFile(location: Location): RIO[Boolean] = location match {
+    case l @ LocalLocation(path)     => isDirectory(location).map(!_)
+    case h @ HdfsLocation(path)      => isDirectory(location).map(!_)
+    case s @ S3Location(bucket, key) => S3Address(bucket, key).exists.execute(s3Client)
   }
 
   /** @return the lines of the file present at `location` if there is one */
