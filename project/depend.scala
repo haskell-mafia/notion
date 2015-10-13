@@ -31,19 +31,19 @@ object depend {
   val disorder =  Seq("com.ambiata"          %% "disorder"        % "0.0.1-20150317050225-9c1f81e" % "test")
 
   def poacher(version: String) =
-    if (version.contains("cdh4"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh4-20150330223215-70a5956" % "compile->compile;test->test") ++ hadoop(version)
-    else if (version.contains("cdh5"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-cdh5-20150330223220-70a5956" % "compile->compile;test->test") ++ hadoop(version)
+    if (version.contains("mr1"))
+      Seq("com.ambiata" %% "poacher" % "1.0.0-mr1-20151013034225-ec555dc" % "compile->compile;test->test") ++ hadoop(version)
+    else if (version.contains("yarn"))
+      Seq("com.ambiata" %% "poacher" % "1.0.0-yarn-20151013034230-ec555dc" % "compile->compile;test->test") ++ hadoop(version)
     else
       sys.error(s"unsupported poacher version, can not build for $version")
 
   def hadoop(version: String, hadoopVersion: String = "2.2.0") =
-    if (version.contains("cdh4"))      Seq("org.apache.hadoop" % "hadoop-client" % "2.0.0-mr1-cdh4.6.0" % "provided" exclude("asm", "asm"),
+    if (version.contains("mr1"))       Seq("org.apache.hadoop" % "hadoop-client" % "2.0.0-mr1-cdh4.6.0" % "provided" exclude("asm", "asm"),
                                            "org.apache.hadoop" % "hadoop-core"   % "2.0.0-mr1-cdh4.6.0" % "provided",
                                            "org.apache.avro"   % "avro-mapred"   % "1.7.4"              % "provided" classifier "hadoop2")
 
-    else if (version.contains("cdh5")) Seq("org.apache.hadoop" % "hadoop-client" % "2.2.0-cdh5.0.0-beta-2" % "provided" exclude("asm", "asm"),
+    else if (version.contains("yarn")) Seq("org.apache.hadoop" % "hadoop-client" % "2.2.0-cdh5.0.0-beta-2" % "provided" exclude("asm", "asm"),
                                            "org.apache.avro"   % "avro-mapred"   % "1.7.5-cdh5.0.0-beta-2" % "provided")
 
     else sys.error(s"unsupported hadoop version, can not build for $version")

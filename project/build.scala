@@ -27,7 +27,7 @@ object build extends Build {
 
   lazy val projectSettings: Seq[Settings] = Seq(
     name := "notion"
-  , version in ThisBuild := s"""0.0.1-${Option(System.getenv("HADOOP_VERSION")).getOrElse("cdh5")}"""
+  , version in ThisBuild := s"""0.0.1-${Option(System.getenv("HADOOP_VERSION")).getOrElse("yarn")}"""
   , organization := "com.ambiata"
   , scalaVersion := "2.11.6"
   , crossScalaVersions := Seq(scalaVersion.value)
