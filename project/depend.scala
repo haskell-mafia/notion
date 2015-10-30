@@ -49,6 +49,8 @@ object depend {
     else sys.error(s"unsupported hadoop version, can not build for $version")
 
   val argonaut    = Seq("io.argonaut"        %% "argonaut"     % "6.1")
+  
+  val origami  = Seq("com.ambiata" %% "origami-core" % "1.0-20150614004458-958c5c4")
 
   // for scala 2.11
   val resolvers = Seq(

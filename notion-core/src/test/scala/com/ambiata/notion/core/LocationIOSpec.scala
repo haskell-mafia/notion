@@ -11,7 +11,7 @@ import com.ambiata.disorder._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.testing.RIOMatcher._
 import java.io._
-
+import com.ambiata.origami._
 import scalaz._, Scalaz._
 
 class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
@@ -257,7 +257,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       l    =  LocalLocation(path.path)
       i    <- loc.io
       _    <- i.writeUtf8Lines(l, lines)
-      s1   <- i.reduceBytes(l, BytesReducer.sha1)
+      s1   <- i.reduceBytes(l, FoldId.sha1Bytes)
       s2   <- Checksum.file(path, SHA1).map(_.hash)
     } yield s1 ==== s2
   }
@@ -269,7 +269,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
       l    =  LocalLocation(path.path)
       i    <- loc.io
       _    <- i.writeUtf8Lines(l, lines)
-      n1   <- i.reduceLinesUTF8(l, LineReducer.linesNumber)
+      n1   <- i.reduceLinesUTF8(l, FoldId.count[String])
       n2   <- RIO.fromIO(LineCount.count(path.toFile).map(_.count))
     } yield n1 must_== n2
   }

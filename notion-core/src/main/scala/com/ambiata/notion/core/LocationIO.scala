@@ -4,16 +4,17 @@ import com.ambiata.saws.core.{S3Action, Clients}
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.data.Lists
-import com.ambiata.mundane.io._
+import com.ambiata.mundane.io.{Files, Directories, FilePath, LocalTemporary, Streams}
 import com.ambiata.mundane.bytes.Buffer
 import com.ambiata.poacher.hdfs.Hdfs
 import com.ambiata.saws.s3.{S3Prefix, S3Address, S3Pattern}
 import org.apache.commons.io.IOUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-import java.io.File
-import Reducer._
-import scalaz._, Scalaz._, effect.IO, effect.Effect._
+import java.io._
+import com.ambiata.origami._, Origami._
+import scalaz._, Scalaz._
+import scalaz.effect.IO, scalaz.effect.Effect._
 
 /**
  * This module provides file system-like functions on HDFS, S3 and locally
@@ -87,7 +88,7 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     case h @ HdfsLocation(path) => Hdfs.readBytes(new Path(path)).run(configuration)
   }
 
-  def readUnsafe(location: Location)(f: java.io.InputStream => RIO[Unit]): RIO[Unit] =
+  def readUnsafe[T](location: Location)(f: java.io.InputStream => RIO[T]): RIO[T] =
     location match {
       case l @ LocalLocation(_) =>
         RIO.using(l.filePath.toInputStream)(f)
@@ -98,7 +99,7 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     }
 
   /** write to a given location, using an OutputStream */
-  def writeUnsafe(location: Location)(f: java.io.OutputStream => RIO[Unit]): RIO[Unit] =
+  def writeUnsafe[T](location: Location)(f: java.io.OutputStream => RIO[T]): RIO[T] =
     location match {
       case l @ LocalLocation(_) =>
         RIO.safe(l.dirPath.dirname.toFile.mkdirs) >>
@@ -111,9 +112,9 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
         for {
           tmpFile <- LocalTemporary.random.fileWithParent
           out     <- tmpFile.toOutputStream
-          _       <- RIO.using(RIO.ok(out))(f)
+          r       <- RIO.using(RIO.ok(out))(f)
           _       <- S3Address(bucket, key).putFile(tmpFile).execute(s3Client)
-        } yield ()
+        } yield r
     }
 
   def streamLinesUTF8[A](location: Location, empty: => A)(f: (String, A) => A): RIO[A] =
@@ -276,17 +277,21 @@ case class LocationIO(configuration: Configuration, s3Client: AmazonS3Client) {
     }.map(_.leftMap(_.toList))
   }
 
-  def reduceLinesUTF8[T](location: Location, reducer: LineReducer[T]): RIO[T] =
-    streamLinesUTF8[reducer.S](location, reducer.init)((line, s) => reducer.reduce(line, s)).map(s => reducer.finalise(s))
-
-  def reduceBytes[T](location: Location, reducer: BytesReducer[T]): RIO[T] =
-    streamBytes[reducer.S](location, reducer.init)((bytes, s) => reducer.reduce(bytes, s)).map(s => reducer.finalise(s))
-
   /** get the last line of a file */
   def tail(location: Location, numberOfLines: Int): RIO[List[String]] =
-    reduceLinesUTF8(location, LineReducer.tail(numberOfLines))
+    reduceLinesUTF8(location, FoldId.lastN[String](numberOfLines))
 
   /** get the last line of a file */
   def lastLine(location: Location): RIO[Option[String]] =
     tail(location, numberOfLines = 1).map(_.lastOption)
+
+  def reduceLinesUTF8[T](location: Location, fold: Fold[String, T]): RIO[T] =
+    readUnsafe(location)(is => fold.into[RIO].run(is))
+
+  def reduceBytes[T](location: Location, fold: Fold[Bytes, T]): RIO[T] =
+    readUnsafe(location)(is => fold.into[RIO].run(is))
+
+  implicit def IdRIONaturalTransformation: Id ~> RIO =
+    IdMonadNaturalTransformation[RIO]
+
 }
