@@ -12,7 +12,7 @@ object build extends Build {
   , base = file(".")
   , settings =
     standardSettings ++
-    promulgate.library("com.ambiata.notion", "ambiata-oss")
+    promulgate.library("com.ambiata.notion", "ambiata-oss-v2")
   , aggregate =
       Seq(core, distcopy)
   )
