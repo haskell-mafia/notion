@@ -2,5 +2,5 @@
 
 JVM_OPTS="-Dfile.encoding=UTF8 -XX:MaxPermSize=512m -Xms512m -Xmx2g -XX:+CMSClassUnloadingEnabled -XX:+UseConcMarkSweepGC"; export JVM_OPTS
 HADOOP_VERSION=yarn; export HADOOP_VERSION
-
-./sbt -Dsbt.log.noformat=true "; clean; update; test-only -- console junitxml"
+export FORCE_AWS=true
+./sbt -Dsbt.log.noformat=true "; clean; update; test-only -- console"
