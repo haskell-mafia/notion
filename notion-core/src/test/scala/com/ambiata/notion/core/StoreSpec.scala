@@ -16,14 +16,12 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
 
   list all keys                                   $list
   list all keys from a key prefix                 $listFromPrefix
-  list all direct prefixes from a key prefix      $listHeadPrefixes
   filter listed paths                             $filter
   find path in root (thirdish)                    $find
   find path in root (first)                       $findfirst
   find path in root (last)                        $findlast
 
   exists                                          $exists
-  existsPrefix                                    $existsPrefix
   not exists                                      $notExists
 
   delete                                          $delete
@@ -31,8 +29,10 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
 
   move                                            $move
   move and read                                   $moveRead
+  move fails for non file/object                  $moveFail
   copy                                            $copy
   copy and read                                   $copyRead
+  copy fails for non file/object                  $copyFail
   mirror                                          $mirror
 
   moveTo                                          $moveTo
@@ -40,6 +40,7 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
   mirrorTo                                        $mirrorTo
 
   checksum                                        $checksum
+  checksum fails for non file/object              $checksumFail
   read / write bytes                              $bytes
   read / write strings                            $strings
   read / write utf8 strings                       $utf8Strings
@@ -71,12 +72,6 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
     l <- s.list(Key.Root / "sub")
   } yield l.sorted ==== full(keys.map(_ prepend "sub")).sorted)
 
-  def listHeadPrefixes = propNoShrink((keys: Keys, st: StoreTemporary) => for {
-    s <- st.store
-    _ <- writeKeys(keys.map(_ prepend "sub"), s)
-    l <- s.listHeads(Key.Root / "sub")
-  } yield l ==== full(keys.map(_ prepend "sub")).map(_.fromRoot.head).distinct.sorted).set(workers=1)
-
   def filter = propNoShrink((keys: Keys, st: StoreTemporary) => for {
     s <- st.store
     _ <- writeKeys(keys, s)
@@ -107,12 +102,6 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
     s <- st.store
     _ <- writeKeys(keys, s)
     l <- full(keys).traverseU(s.exists)
-  } yield l ==== l.map(_ => true))
-
-  def existsPrefix = propNoShrink((keys: Keys, st: StoreTemporary) => for {
-    s <- st.store
-    _ <- writeKeys(keys, s)
-    l <- full(keys).traverseU(k => s.existsPrefix(k.copy(components = k.components.dropRight(1))))
   } yield l ==== l.map(_ => true))
 
   def notExists = propNoShrink((keys: Keys, st: StoreTemporary) => for {
@@ -148,6 +137,12 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
     d <- s.utf8.read(n.full.toKey)
   } yield d ==== m.value.toString)
 
+  def moveFail = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => (for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.move(m.path.toKey, n.path.toKey)
+  } yield ()) must beFail)
+
   def copy = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => for {
     s <- st.store
     _ <- writeKeys(Keys(m :: Nil), s)
@@ -162,6 +157,12 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
     b <- s.utf8.read(m.full.toKey)
     a <- s.utf8.read(n.full.toKey)
   } yield b ==== a)
+
+  def copyFail = propNoShrink((m: KeyEntry, n: KeyEntry, st: StoreTemporary) => (for {
+    s <- st.store
+    _ <- writeKeys(Keys(m :: Nil), s)
+    _ <- s.copy(m.path.toKey, n.path.toKey)
+  } yield ()) must beFail)
 
   def mirror = propNoShrink((keys: Keys, st: StoreTemporary) => for {
     s <- st.store
@@ -202,37 +203,38 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
     r <- s.checksum(m.full.toKey, MD5): RIO[Checksum]
   } yield r ==== Checksum.string(m.value.toString, MD5))
 
+  def checksumFail = propNoShrink((m: KeyEntry, st: StoreTemporary) => (for {
+    s <- st.store: RIO[Store[RIO]]
+    _ <- writeKeys(Keys(m :: Nil), s): RIO[Unit]
+    r <- s.checksum(m.path.toKey, MD5): RIO[Checksum]
+  } yield ()) must beFail)
+
   def bytes = propNoShrink((m: KeyEntry, bytes: Array[Byte], st: StoreTemporary) => for {
     s <- st.store
-    _ <- writeKeys(Keys(m :: Nil), s)
     _ <- s.bytes.write(m.full.toKey, ByteVector(bytes))
     r <- s.bytes.read(m.full.toKey)
   } yield r ==== ByteVector(bytes))
 
   def strings = propNoShrink((m: KeyEntry, str: String, st: StoreTemporary) => for {
     s <- st.store
-    _ <- writeKeys(Keys(m :: Nil), s)
     _ <- s.strings.write(m.full.toKey, str, Codec.UTF8)
     r <- s.strings.read(m.full.toKey, Codec.UTF8)
   } yield r ==== str)
 
   def utf8Strings = propNoShrink((m: KeyEntry, str: String, st: StoreTemporary) => for {
     s <- st.store
-    _ <- writeKeys(Keys(m :: Nil), s)
     _ <- s.utf8.write(m.full.toKey, str)
     r <- s.utf8.read(m.full.toKey)
   } yield r ==== str)
 
   def lines = propNoShrink((m: KeyEntry, v: List[Int], st: StoreTemporary) => for {
     s <- st.store
-    _ <- writeKeys(Keys(m :: Nil), s)
     _ <- s.lines.write(m.full.toKey, v.map(_.toString), Codec.UTF8)
     r <- s.lines.read(m.full.toKey, Codec.UTF8)
   } yield r ==== v.map(_.toString))
 
   def utf8Lines = propNoShrink((m: KeyEntry, v: List[Int], st: StoreTemporary) => for {
     s <- st.store
-    _ <- writeKeys(Keys(m :: Nil), s)
     _ <- s.linesUtf8.write(m.full.toKey, v.map(_.toString))
     r <- s.linesUtf8.read(m.full.toKey)
   } yield r ==== v.map(_.toString))

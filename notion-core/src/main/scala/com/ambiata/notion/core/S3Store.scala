@@ -19,9 +19,6 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
       new Key(p.removeCommonPrefix(s3).cata(_.split(S3Operations.DELIMITER).toList, Nil).map(KeyName.unsafe).toVector)
     }))}
 
-  def listHeads(prefix: Key): RIO[List[Key]] =
-    run { (s3 / prefix.name).listKeysHead.map(_.map(Key.unsafe)) }
-
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     list(prefix).map(_.filter(predicate))
 
@@ -30,9 +27,6 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
 
   def exists(key: Key): RIO[Boolean] =
     run { (s3 | key.name).exists }
-
-  def existsPrefix(prefix: Key): RIO[Boolean] =
-    run { (s3 / prefix.name).exists }
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
     run { (s3 | key.name).withStream(in => Checksum.stream(in, algorithm)) }
@@ -104,9 +98,6 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
   def list(prefix: Key): RIO[List[Key]] =
     readOnly.list(prefix)
 
-  def listHeads(prefix: Key): RIO[List[Key]] =
-    readOnly.listHeads(prefix)
-
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     readOnly.filter(prefix, predicate)
 
@@ -115,9 +106,6 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
 
   def exists(key: Key): RIO[Boolean] =
     readOnly.exists(key)
-
-  def existsPrefix(key: Key): RIO[Boolean] =
-    readOnly.existsPrefix(key)
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
     readOnly.checksum(key, algorithm)
@@ -224,9 +212,6 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
     thunk.execute(client)
-
-  private def keyToFilePath(key: Key): FilePath =
-    FilePath.unsafe(key.name)
 }
 
 object S3Store {

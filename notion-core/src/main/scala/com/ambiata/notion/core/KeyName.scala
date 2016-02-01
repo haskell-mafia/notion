@@ -1,5 +1,7 @@
 package com.ambiata.notion.core
 
+import com.ambiata.mundane.path.Component
+
 import java.util.UUID
 
 import com.ambiata.mundane.reflect.MacrosCompat
@@ -15,6 +17,9 @@ object KeyName extends MacrosCompat {
   def fromString(s: String): Option[KeyName] =
     if (s.contains("/")) None
     else Some(KeyName.unsafe(s))
+
+  def fromComponent(c: Component): KeyName =
+    unsafe(c.name)
 }
 
 class KeyNameSyntax(name: KeyName) {

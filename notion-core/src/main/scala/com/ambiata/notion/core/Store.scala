@@ -39,7 +39,6 @@ trait WriteOnlyStore[F[_]] {
 trait ReadOnlyStore[F[_]] {
   def listAll: F[List[Key]] = list(Key.Root)
   def list(prefix: Key): F[List[Key]]
-  def listHeads(prefix: Key): F[List[Key]]
 
   def filterAll(predicate: Key => Boolean): F[List[Key]] = filter(Key.Root, predicate)
   def filter(prefix: Key, predicate: Key => Boolean): F[List[Key]]
@@ -48,7 +47,6 @@ trait ReadOnlyStore[F[_]] {
   def find(prefix: Key, predicate: Key => Boolean): F[Option[Key]]
 
   def exists(key: Key): F[Boolean]
-  def existsPrefix(prefix: Key): F[Boolean]
 
   def copyTo(store: Store[F], in: Key, out: Key): F[Unit]
 

@@ -7,38 +7,26 @@ import com.ambiata.mundane.data._
 import com.ambiata.mundane.io._
 import com.ambiata.poacher.hdfs._
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.{FileSystem, Path}
+import org.apache.hadoop.fs.{FileSystem, Path => HPath}
 import scodec.bits.ByteVector
 
 import scala.io.Codec
-import scalaz.Scalaz._
+import scalaz.{Store => _, _}, Scalaz._
 import scalaz.concurrent._
-import scalaz.effect.IO
 import scalaz.stream._
-import scalaz.{Store => _, _}
 
-case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with ReadOnlyStore[RIO] {
+case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] with ReadOnlyStore[RIO] {
   def readOnly: ReadOnlyStore[RIO] =
     this
 
-  def basePath: Path =
-    new Path(root.path)
+  def basePath: HPath =
+    root.toHPath
 
   def list(prefix: Key): RIO[List[Key]] =
-    hdfs { Hdfs.filesystem.flatMap { fs =>
-      Hdfs.globFilesRecursively(root </> keyToDirPath(prefix)).map { paths =>
-        paths.map { path =>
-          filePathToKey(FilePath.unsafe(path.toString).relativeTo(root))
-        }
-      }
-    }}
-
-  def listHeads(prefix: Key): RIO[List[Key]] =
-    hdfs { Hdfs.filesystem.flatMap { fs =>
-      Hdfs.globPaths(root </> keyToDirPath(prefix)).map { paths =>
-        paths.map(path => Key.unsafe(path.getName))
-      }
-    }}
+    hdfs {
+      keyToHdfsPath(prefix).listFilesRecursively.map(files =>
+        files.flatMap(_.toHdfsPath.rebaseTo(root)).map(hdfsPathToKey))
+    }
 
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     list(prefix).map(_.filter(predicate))
@@ -46,23 +34,31 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with
   def find(prefix: Key, predicate: Key => Boolean): RIO[Option[Key]] =
     list(prefix).map(_.find(predicate))
 
+  /* Note: This was broken before, it would return true if Key was a directory */
   def exists(key: Key): RIO[Boolean] =
-    hdfs { Hdfs.exists(root </> keyToFilePath(key)) }
-
-  def existsPrefix(prefix: Key): RIO[Boolean] =
-    hdfs { Hdfs.exists(root </> keyToFilePath(prefix)) }
+    hdfs { keyToHdfsPath(key).determine.map(_.cata(_.isLeft, false)) }
 
   def delete(key: Key): RIO[Unit] =
-    hdfs { Hdfs.delete(root </> keyToFilePath(key)) }
+    hdfs { keyToHdfsPath(key).determineFile.flatMap(_.delete) }
 
   def deleteAll(prefix: Key): RIO[Unit] =
-    hdfs { Hdfs.deleteAll(root </> keyToDirPath(prefix)) }
+    hdfs { keyToHdfsPath(prefix).delete }
 
+  /* Note: This use to work on dirs also, but it shouldn't have. */
   def move(in: Key, out: Key): RIO[Unit] =
-    copy(in, out) >> delete(in)
+    hdfs {
+      keyToHdfsPath(in).determinef(
+        f => f.move(keyToHdfsPath(out)).void
+      , d => Hdfs.fail(s"Can not move key, not an object. ${d}").void)
+    }
 
+  /* Note: This use to work on dirs also, but it shouldn't have. */
   def copy(in: Key, out: Key): RIO[Unit] =
-    hdfs { Hdfs.cp(root </> keyToFilePath(in), root </> keyToFilePath(out), false) }
+    hdfs {
+      keyToHdfsPath(in).determinef(
+        f => f.copy(keyToHdfsPath(out)).void
+      , d => Hdfs.fail(s"Can not copy key, not an object. ${d}").void)
+    }
 
   def mirror(in: Key, out: Key): RIO[Unit] = for {
     paths <- list(in)
@@ -83,7 +79,12 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with
   } yield ()
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
-    withInputStreamValue[Checksum](key)(in => Checksum.stream(in, algorithm))
+    hdfs {
+      val p = keyToHdfsPath(key)
+      p.checksum(algorithm).flatMap(_.cata(
+        Hdfs.ok
+      , Hdfs.fail(s"Key does not exist. HdfsPath(${p.path})")))
+    }
 
   val bytes: StoreBytes[RIO] = new StoreBytes[RIO] {
     def read(key: Key): RIO[ByteVector] =
@@ -93,7 +94,7 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with
       unsafe.withOutputStream(key)(Streams.writeBytes(_, data.toArray))
 
     def source(key: Key): Process[Task, ByteVector] =
-      scalaz.stream.io.chunkR(FileSystem.get(conf).open(root </> keyToFilePath(key))).evalMap(_(1024 * 1024))
+      scalaz.stream.io.chunkR(FileSystem.get(conf).open(keyToHdfsPath(key).toHPath)).evalMap(_(1024 * 1024))
 
     def sink(key: Key): Sink[Task, ByteVector] =
       io.resource(Task.delay(new PipedOutputStream))(out => Task.delay(out.close))(
@@ -131,7 +132,7 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with
       strings.write(key, Lists.prepareForFile(data), codec)
 
     def source(key: Key, codec: Codec): Process[Task, String] =
-      scalaz.stream.io.linesR(FileSystem.get(conf).open(root </> keyToFilePath(key)))(codec)
+      scalaz.stream.io.linesR(FileSystem.get(conf).open(keyToHdfsPath(key).toHPath))(codec)
 
     def sink(key: Key, codec: Codec): Sink[Task, String] =
       bytes.sink(key).map(_.contramap(s => ByteVector.view(s"$s\n".getBytes(codec.name))))
@@ -152,29 +153,24 @@ case class HdfsStore(conf: Configuration, root: DirPath) extends Store[RIO] with
   }
 
   def withInputStreamValue[A](key: Key)(f: InputStream => RIO[A]): RIO[A] =
-    hdfs { Hdfs.readWith(root </> keyToFilePath(key), f) }
+    hdfs { keyToHdfsPath(key).readWith(i => Hdfs.fromRIO(f(i))) }
 
   val unsafe: StoreUnsafe[RIO] = new StoreUnsafe[RIO] {
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
       withInputStreamValue[Unit](key)(f)
 
     def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      hdfs { Hdfs.writeWith(root </> keyToFilePath(key), f) }
+      hdfs { keyToHdfsPath(key).writeWith(o => Hdfs.fromRIO(f(o))) }
   }
 
   def hdfs[A](thunk: => Hdfs[A]): RIO[A] =
     thunk.run(conf)
 
-  private implicit def filePathToPath(f: FilePath): Path = new Path(f.path)
-  private implicit def dirPathToPath(d: DirPath): Path = new Path(d.path)
+  /* WARNING: This is a lossy operation, empty components will be dropped */
+  private def keyToHdfsPath(key: Key): HdfsPath =
+    root / HdfsPath.fromString(key.name).path
 
-  private def keyToFilePath(key: Key): FilePath =
-    FilePath.unsafe(key.name)
-
-  private def keyToDirPath(key: Key): DirPath =
-    DirPath.unsafe(key.name)
-
-  private def filePathToKey(path: FilePath): Key =
-    Key(path.names.map(fn => KeyName.unsafe(fn.name)).toVector)
-
+  /* WARNING: This is a lossy operation */
+  private def hdfsPathToKey(p: HdfsPath): Key =
+    Key(p.path.names.map(KeyName.fromComponent).toVector)
 }
