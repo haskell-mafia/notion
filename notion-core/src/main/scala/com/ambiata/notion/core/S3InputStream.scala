@@ -1,7 +1,6 @@
 package com.ambiata.notion.core
 
 import com.ambiata.mundane.control._
-import com.ambiata.mundane.io._
 import com.ambiata.mundane.io.Temporary._
 import com.ambiata.saws.s3._
 
@@ -20,12 +19,12 @@ import scalaz._, Scalaz._, effect.IO
  */
 object S3InputStream {
   def stream(address: S3Address, client: AmazonS3Client): RIO[InputStream] = {
-    val tmpPath = uniqueFilePath
+    val tmpPath = uniqueLocalPath
     address.getFile(tmpPath).execute(client) >>
       RIO.safe[InputStream](
-        new LocalInputStream(tmpPath.path) {
+        new LocalInputStream(tmpPath.path.path) {
           override def close(): Unit = {
-            Files.delete(tmpPath).unsafePerformIO
+            tmpPath.delete.unsafePerformIO
             super.close()
           }
         }

@@ -11,17 +11,15 @@ import scalaz._, Scalaz._, effect.IO
 
 object S3OutputStream {
   def stream(address: S3Address, client: AmazonS3Client): RIO[OutputStream] = for {
-    t <- LocalTemporary.random.setup.pure[RIO]
-    d = t._1
-    p = t._2.toFilePath
-    _ <- Directories.mkdirs(p.dirname)
+    p <- LocalTemporary.random.setup.pure[RIO]
+    t <- p.touch
     o <- RIO.safe[OutputStream]({
-      val f = new BufferedOutputStream(new FileOutputStream(p.path))
+      val f = new BufferedOutputStream(new FileOutputStream(t.path.path))
       new OutputStream {
         override def close(): Unit = {
-          (RIO.addFinalizer(Finalizer(Directories.delete(d).void)) >>
+          (RIO.addFinalizer(Finalizer(t.delete)) >>
             RIO.safe[Unit](f.close) >>
-              address.putFile(p).execute(client)).unsafePerformIO
+              address.putFile(t).execute(client)).unsafePerformIO
           ()
         }
 
