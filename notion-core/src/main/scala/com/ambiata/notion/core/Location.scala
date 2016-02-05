@@ -2,94 +2,56 @@ package com.ambiata.notion.core
 
 import scalaz._, Scalaz._
 import com.ambiata.mundane.io._
+import com.ambiata.mundane.path._
+import com.ambiata.poacher.hdfs._
+import com.ambiata.saws.s3._
+
+import argonaut._, Argonaut._
 
 /**
  * A location represents a "path" on a file system
  * on either HDFS, S3 or locally
  */
 sealed trait Location {
-  /** show a string representing the location path */
-  def render: String
 
-  /** modify this  */
-  def map(f: DirPath => DirPath): Location
+  override def toString: String =
+    this match {
+      case HdfsLocation(p)  => s"HdfsLocation(HdfsPath(${p.path}))"
+      case S3Location(p)    => s"S3Location(${p.render})"
+      case LocalLocation(p) => s"LocalLocation(LocalPath(${p.path}))"
+    }
 
-  /** extend this location with a file path */
-  def </>(other: FilePath): Location = map(_ </> other.toDirPath)
+  def fold[X](l: LocalPath => X, h: HdfsPath => X, s: S3Pattern => X): X =
+    this match {
+      case LocalLocation(p) => l(p)
+      case HdfsLocation(p)  => h(p)
+      case S3Location(p)    => s(p)
+    }
 
-  /** extend this location with a dir path */
-  def </>(other: DirPath):  Location = map(_ </> other)
-
-  /** extend this location with a file name */
-  def </>(name: FileName):  Location = map(_ </> name)
-
+  def |(component: Component):  Location =
+    fold(l => LocalLocation(l | component)
+       , h => HdfsLocation(h| component)
+       // TODO is this ok?
+       , s => S3Location(s.copy(unknown = s.unknown + "/" + component.name)))
 }
 
-case class HdfsLocation(path: String) extends Location {
-
-  def render: String =
-    "hdfs://"+path
-
-  def dirPath  = DirPath.unsafe(path)
-  def filePath = FilePath.unsafe(path)
-
-  def map(f: DirPath => DirPath): Location =
-    copy(path = f(dirPath).path)
-}
-
-object HdfsLocation {
-  def create(dir: DirPath): HdfsLocation =
-    HdfsLocation(dir.path)
-}
-
-case class S3Location(bucket: String, key: String) extends Location {
-  def render: String =
-    "s3://"+bucket+"/"+key
-
-  def map(f: DirPath => DirPath): Location =
-    copy(key = f(DirPath.unsafe(key)).path)
-}
-
-case class LocalLocation(path: String) extends Location {
-
-  def dirPath  = DirPath.unsafe(path)
-  def filePath = FilePath.unsafe(path)
-
-  def render: String =
-    if (path.startsWith("/")) "file://"+path
-    else                      path
-
-  def map(f: DirPath => DirPath): Location =
-    copy(path = f(dirPath).path)
-
-}
-
-object LocalLocation {
-  def create(dir: DirPath): LocalLocation =
-    LocalLocation(dir.path)
-}
-
-import argonaut._, Argonaut._
+case class HdfsLocation(path: HdfsPath) extends Location
+case class S3Location(pattern: S3Pattern) extends Location
+case class LocalLocation(path: LocalPath) extends Location
 
 object Location {
-  def fromUri(s: String): String \/ Location = try {
-    val uri = new java.net.URI(s)
-    uri.getScheme match {
-      case "hdfs" =>
-        HdfsLocation(uri.getPath).right
-      case "s3" =>
-        S3Location(uri.getHost, uri.getPath.drop(1)).right
-      case "file" =>
-        LocalLocation(uri.toURL.getFile).right
-      case null =>
-        LocalLocation(uri.getPath).right
-      case _ =>
-        s"Unknown or invalid repository scheme [${uri.getScheme}]".left
-    }
-  } catch {
-    case e: java.net.URISyntaxException =>
-      e.getMessage.left
-  }
+  def fromUri(s: String): String \/ Location =
+    \/.fromTryCatchNonFatal(new java.net.URI(s)).leftMap(_.getMessage).flatMap(uri =>
+      uri.getScheme match {
+        case "hdfs" =>
+          HdfsPath.fromURI(uri).cata(HdfsLocation(_).right, s"Invalid HdfsLocation ${s}".left)
+        case "s3" =>
+          S3Pattern.fromURI(s).cata(S3Location(_).right, s"Invalid S3Location ${s}".left)
+        case "file" | null =>
+          LocalPath.fromURI(uri).cata(LocalLocation(_).right, s"Invalid LocalLocation ${s}".left)
+        case _ =>
+          s"Unknown or invalid Location scheme [${uri.getScheme}]".left
+      })
 
   def localLocationFromUri(s: String): String \/ Location =
     fromUri(s).flatMap {
@@ -111,16 +73,16 @@ object Location {
 
   implicit def LocationEncodeJson: EncodeJson[Location] =
     EncodeJson({
-      case S3Location(b, k) => Json("s3"   := Json("bucket" := b, "key" := k))
-      case HdfsLocation(p)  => Json("hdfs" := Json("path" := p))
-      case LocalLocation(p) => Json("local":= Json("path" := p))
+      case S3Location(s)    => Json("s3"   := Json("bucket" := s.bucket, "key" := s.unknown))
+      case HdfsLocation(p)  => Json("hdfs" := Json("path" := p.path.path))
+      case LocalLocation(p) => Json("local":= Json("path" := p.path.path))
     })
 
   implicit def LocationDecodeJson: DecodeJson[Location] =
     DecodeJson(c =>
-      tagged("s3",    c, jdecode2L(S3Location.apply)("bucket", "key")).map(l => l:Location) |||
-      tagged("hdfs",  c, jdecode1L(HdfsLocation.apply)("path")).map(l => l:Location) |||
-      tagged("local", c, jdecode1L(LocalLocation.apply)("path")).map(l => l:Location))
+      tagged("s3",    c, jdecode2L(S3Pattern(_: String, _: String))("bucket", "key")).map(p => S3Location(p):Location) |||
+      tagged("hdfs",  c, jdecode1L(Path(_: String))("path")).map(p => HdfsLocation(HdfsPath(p)):Location) |||
+      tagged("local", c, jdecode1L(Path(_: String))("path")).map(p => LocalLocation(LocalPath(p)):Location))
 
   def tagged[A](tag: String, c: HCursor, decoder: DecodeJson[A]): DecodeResult[A] =
     (c --\ tag).hcursor.fold(DecodeResult.fail[A]("Invalid tagged type", c.history))(decoder.decode)
