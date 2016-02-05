@@ -10,7 +10,7 @@ import java.io._
 import scalaz._, Scalaz._, effect.IO
 
 object S3OutputStream {
-  def stream(address: S3Address, client: AmazonS3Client): RIO[OutputStream] = for {
+  def stream(pattern: S3Pattern, client: AmazonS3Client): RIO[OutputStream] = for {
     p <- LocalTemporary.random.setup.pure[RIO]
     t <- p.touch
     o <- RIO.safe[OutputStream]({
@@ -19,7 +19,7 @@ object S3OutputStream {
         override def close(): Unit = {
           (RIO.addFinalizer(Finalizer(t.delete)) >>
             RIO.safe[Unit](f.close) >>
-              address.putFile(t).execute(client)).unsafePerformIO
+              pattern.putFile(t).execute(client)).unsafePerformIO
           ()
         }
 

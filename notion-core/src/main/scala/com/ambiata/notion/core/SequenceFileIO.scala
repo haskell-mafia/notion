@@ -2,7 +2,7 @@ package com.ambiata.notion.core
 
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
-import com.ambiata.saws.s3._
+import com.ambiata.saws.core._
 import com.ambiata.poacher.hdfs.Hdfs
 
 import org.apache.hadoop.io.{Writable, NullWritable, SequenceFile}
@@ -21,21 +21,22 @@ import scalaz._, Scalaz._, effect.Effect._
  */
 object SequenceFileIO {
 
-  def readKeys[K <: Writable : Manifest, A](location: Location, locationIO: LocationIO, emptyKey: => K)(f: K => String \/ A): RIO[String \/ List[A]] =
-    readKeyValues(location, locationIO, emptyKey, NullWritable.get)({ case (k, _) => f(k) })
+  def readKeys[K <: Writable : Manifest, A](location: Location, conf: Configuration, emptyKey: => K)(f: K => String \/ A): LocationIO[String \/ List[A]] =
+    readKeyValues(location, conf, emptyKey, NullWritable.get)({ case (k, _) => f(k) })
 
-  def readValues[V <: Writable : Manifest, A](location: Location, locationIO: LocationIO, emptyValue: => V)(f: V => String \/ A): RIO[String \/ List[A]] =
-    readKeyValues(location, locationIO, NullWritable.get, emptyValue)({ case (_, v) => f(v) })
+  def readValues[V <: Writable : Manifest, A](location: Location, conf: Configuration, emptyValue: => V)(f: V => String \/ A): LocationIO[String \/ List[A]] =
+    readKeyValues(location, conf, NullWritable.get, emptyValue)({ case (_, v) => f(v) })
 
-  def readKeyValues[K <: Writable, V <: Writable, A](location: Location, locationIO: LocationIO, emptyKey: => K, emptyValue: => V)
-                                                    (f: (K, V) => String \/ A)(implicit km: Manifest[K], vm: Manifest[V]): RIO[String \/ List[A]] = for {
-    stream <- location match {
-      case HdfsLocation(p)         => RIO.safe[InputStream](FileSystem.get(locationIO.configuration).open(new Path(p)))
-      case LocalLocation(p)        => RIO.safe[InputStream](new LocalInputStream(p))
-      case S3Location(bucket, key) => S3InputStream.stream(S3Address(bucket, key), locationIO.s3Client)
+  def readKeyValues[K <: Writable, V <: Writable, A](location: Location, conf: Configuration, emptyKey: => K, emptyValue: => V)
+                                                    (f: (K, V) => String \/ A)(implicit km: Manifest[K], vm: Manifest[V]): LocationIO[String \/ List[A]] = for {
+    stream <- LocationIO.withLocationContext(location) {
+      case LocalLocationContext(p)      => LocationIO.fromRIO(p.determineFile.flatMap(lf => RIO.safe[InputStream](new LocalInputStream(lf.path.path))))
+      case HdfsLocationContext(conf, p) => LocationIO.fromHdfs(conf, p.toInputStream)
+      case S3LocationContext(client, p) => LocationIO.fromS3(client, p.determineAddress.flatMap(a => S3Action.fromRIO(S3InputStream.stream(a, client))))
     }
-    r <- readKeyValuesX(stream, locationIO.configuration, emptyKey, emptyValue)(f)
-  } yield r
+    ioc    <- LocationIO.ioContext
+    result <- LocationIO.fromRIO(readKeyValuesX(stream, conf, emptyKey, emptyValue)(f))
+  } yield result
 
   def readKeyValuesX[K <: Writable, V <: Writable, A](stream: InputStream, conf: Configuration, emptyKey: => K, emptyValue: => V)
                                                      (f: (K, V) => String \/ A)(implicit km: Manifest[K], vm: Manifest[V]): RIO[String \/ List[A]] =
@@ -56,25 +57,23 @@ object SequenceFileIO {
       })
     })
 
-  def writeKeys[K <: Writable : Manifest, A](location: Location, locationIO: LocationIO, items: List[A])(f: A => K): RIO[Unit] =
-    writeKeyValues[K, NullWritable, A](location, locationIO, items)(a => (f(a), NullWritable.get))
+  def writeKeys[K <: Writable : Manifest, A](location: Location, conf: Configuration, items: List[A])(f: A => K): LocationIO[Unit] =
+    writeKeyValues[K, NullWritable, A](location, conf, items)(a => (f(a), NullWritable.get))
 
-  def writeValues[V <: Writable : Manifest, A](location: Location, locationIO: LocationIO, items: List[A])(f: A => V): RIO[Unit] =
-    writeKeyValues[NullWritable, V, A](location, locationIO, items)(a => (NullWritable.get, f(a)))
+  def writeValues[V <: Writable : Manifest, A](location: Location, conf: Configuration, items: List[A])(f: A => V): LocationIO[Unit] =
+    writeKeyValues[NullWritable, V, A](location, conf, items)(a => (NullWritable.get, f(a)))
 
-  def writeKeyValues[K <: Writable, V <: Writable, A](location: Location, locationIO: LocationIO, items: List[A])
-                                                     (f: A => (K, V))(implicit km: Manifest[K], vm: Manifest[V]): RIO[Unit] = for {
-    stream <- location match {
-      case HdfsLocation(p) =>
-        Hdfs.mkdir(new Path(p).getParent).run(locationIO.configuration) >>
-          RIO.safe[OutputStream](FileSystem.get(locationIO.configuration).create(new Path(p)))
-      case LocalLocation(p) =>
-        Directories.mkdirs(FilePath.unsafe(p).dirname) >>
-          RIO.safe[OutputStream](new BufferedOutputStream(new FileOutputStream(p)))
-      case S3Location(bucket, key) =>
-        S3OutputStream.stream(S3Address(bucket, key), locationIO.s3Client)
+  def writeKeyValues[K <: Writable, V <: Writable, A](location: Location, conf: Configuration, items: List[A])
+                                                     (f: A => (K, V))(implicit km: Manifest[K], vm: Manifest[V]): LocationIO[Unit] = for {
+    stream <- LocationIO.withLocationContext(location) {
+      case LocalLocationContext(p) =>
+        LocationIO.fromRIO(p.doesNotExist(s"${p} already exists", p.dirname.mkdirs >> p.path.toOutputStream.map[OutputStream](new BufferedOutputStream(_))))
+      case HdfsLocationContext(conf, p) =>
+        LocationIO.fromHdfs(conf, p.doesNotExist(s"${p} already exists", p.dirname.mkdirs >> p.toOutputStream))
+      case S3LocationContext(client, p) =>
+        LocationIO.fromS3(client, S3Action.fromRIO(S3OutputStream.stream(p, client)))
     }
-    _ <- writeKeyValuesX(stream, locationIO.configuration, items)(f)
+    _      <- LocationIO.fromRIO(writeKeyValuesX(stream, conf, items)(f))
   } yield ()
 
   def writeKeyValuesX[K <: Writable, V <: Writable, A](stream: OutputStream, conf: Configuration, items: List[A])

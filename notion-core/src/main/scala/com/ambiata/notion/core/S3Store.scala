@@ -207,7 +207,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
       readOnly.unsafe.withInputStream(key)(f)
 
     def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      S3OutputStream.stream(s3 | key.name, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
+      S3OutputStream.stream((s3 / key.name).toS3Pattern, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
   }
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
