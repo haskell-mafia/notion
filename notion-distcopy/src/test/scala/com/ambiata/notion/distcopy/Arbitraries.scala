@@ -27,13 +27,4 @@ object Arbitraries {
         Gen.const(bigData)
       , arbitrary[String]
     ).map(BigData))
-
-
-  implicit def ArbitraryFilePath: Arbitrary[FilePath] =
-    Arbitrary {
-      for {
-        n  <- Gen.choose(1, 3)
-        fs <- Gen.listOfN(n, Gen.identifier).map(fs => FilePath.unsafe(fs.mkString("/")))
-      } yield fs
-    }
 }

@@ -28,14 +28,14 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
     b <- hdfs.path.run(q)
     c <- hdfs.path.run(q)
     s <- s3.address.execute(s3Client)
-    _ <- Hdfs.write(a, "a").run(q)
-    _ <- Hdfs.write(b, "bbbbbbb").run(q)
-    _ <- Hdfs.write(c, "c").run(q)
+    _ <- a.write("a").run(q)
+    _ <- b.write("bbbbbbb").run(q)
+    _ <- c.write("c").run(q)
     r <- DistCopyInputFormat.calc(
       Mappings(Vector(
-          UploadMapping(a, s)
-        , UploadMapping(b, s)
-        , UploadMapping(c, s)
+          UploadMapping(a.toHPath, s)
+        , UploadMapping(b.toHPath, s)
+        , UploadMapping(c.toHPath, s)
       )), 2, s3Client, q)
   } yield r ==== Workloads(Vector(Workload(Vector(1)), Workload(Vector(0, 2)))))
 
@@ -50,9 +50,9 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
     _ <- c.put("c").execute(s3Client)
     r <- DistCopyInputFormat.calc(
       Mappings(Vector(
-          DownloadMapping(a, h)
-        , DownloadMapping(b, h)
-        , DownloadMapping(c, h)
+          DownloadMapping(a, h.toHPath)
+        , DownloadMapping(b, h.toHPath)
+        , DownloadMapping(c, h.toHPath)
       )), 2, s3Client, q)
   } yield r ==== Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2)))))
 

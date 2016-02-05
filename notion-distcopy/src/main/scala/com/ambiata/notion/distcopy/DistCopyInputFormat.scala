@@ -3,7 +3,7 @@ package com.ambiata.notion.distcopy
 
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.mundane.control.RIO
-import com.ambiata.poacher.hdfs.Hdfs
+import com.ambiata.poacher.hdfs.HdfsPath
 import com.ambiata.poacher.mr.{DistCache, MrContext, ThriftCache}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.NullWritable
@@ -84,7 +84,7 @@ object DistCopyInputFormat {
 
   def size(z: (Mapping, Int), client: AmazonS3Client, conf: Configuration): RIO[Long] = z._1 match {
     case DownloadMapping(from, _) => from.size.execute(client)
-    case UploadMapping(from, _)   => Hdfs.size(from).run(conf).map(_.value)
+    case UploadMapping(from, _)   => HdfsPath.fromPath(from).sizeOrFail.run(conf).map(_.value)
   }
 
   def calc(mappings: Mappings, mappers: Int, client: AmazonS3Client, conf: Configuration): RIO[Workloads] = for {
