@@ -1,288 +1,448 @@
 package com.ambiata.notion.core
 
 import com.ambiata.mundane.control.RIO
-import org.scalacheck.Arbitrary
-import org.scalacheck.Arbitrary._
-import org.scalacheck.Gen._
 import org.specs2._
 import org.specs2.matcher.Parameters
 import org.specs2.matcher._
 import com.ambiata.disorder._
+import com.ambiata.mundane.bytes._
 import com.ambiata.mundane.io._
-import com.ambiata.mundane.testing.RIOMatcher._
+import com.ambiata.mundane.path._
+import com.ambiata.mundane.path.Arbitraries._
+import com.ambiata.mundane.testing.Laws._
+import com.ambiata.notion.core.LocationIOMatcher._
 import java.io._
+
+import org.scalacheck._, Arbitrary._
 
 import scalaz._, Scalaz._
 
 class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
- The LocationIO class provides functions to read/write/query locations on different systems
+ LocationIO Laws
+ ===============
 
-   isDirectory                                          $isDirectory
-   isFile                                               $isFile
-   deleteAll                                            $deleteAll
-   delete                                               $delete
-   read / write lines                                   $readWriteLines
-   read / write unsafe                                  $readWriteUnsafe
-   stream lines                                         $streamLines
-   list                                                 $list
-   exists                                               $exists
-   syncFile                                             $syncFile
-   syncFiles                                            $syncFiles
-   syncFile fails when trying to overwrite results      $syncFileFail
+   equals laws
 
-   first line of a file                                 $fileFirst
-   the last line of a file                              $fileLast
-   the first lines of a file                            $fileHead
-   the last lines of a file                             $fileTail
-   the last lines of a file and the number of lines     $fileTailAndLinesNumber
-   head of a file with all line numbers <==> readLines  $fileHeadAllIsReadLines
-   tail of a file with all line numbers <==> readLines  $fileTailAllIsReadLines
-   sha1 of a file <==> mundane.Checksum("SHA1")         $sha1LikeMundane
-   linecount of a file <==> mundane.LineCount           $linecountLikeMundane
+     ${ equal.laws[LocationIO[Int]] }
+
+   monad laws
+   
+     ${ monad.laws[LocationIO] }
+
+ LocationIO IO
+ =============
+
+  LocationIO should be able to do a recursive list on a location
+
+    A single file/object should be a list of one
+
+     ${ prop((loc: LocationTemporary, data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p, data.value)
+          a <- LocationIO.list(p).map(_.sorted)
+        } yield a -> List(p)) must beOkLike(loc.context)(t => t._1 ==== t._2))
+      }
+
+    With multiple levels
+
+     ${ prop((loc: LocationTemporary, dp: DistinctPair[Component], data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p | dp.first, data.value)
+          _ <- LocationIO.writeUtf8(p | dp.second | dp.first, data.value)
+          a <- LocationIO.list(p).map(_.sorted)
+          e = List(p | dp.first, p | dp.second | dp.first).sorted
+        } yield a -> e) must beOkLike(loc.context)(t => t._1 ==== t._2))
+     }
+
+  LocationIO should be able to do an existance check on a location
+
+    A file/object
+
+     ${ prop((loc: LocationTemporary, data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p, data.value)
+          e <- LocationIO.exists(p)
+        } yield e) must beOkValue(loc.context)(true))
+      }
+
+    A dir/prefix
+
+     ${ prop((loc: LocationTemporary, c: Component, data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p | c, data.value)
+          e <- LocationIO.exists(p)
+        } yield e) must beOkValue(loc.context)(true))
+      }
+
+  LocationIO should be able to read/write lines from a location
+
+    From a sinlge file/object
+
+     ${ prop((loc: LocationTemporary, lines: List[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.map(_.value))
+          r <- LocationIO.readLines(p)
+        } yield r) must beOkValue(loc.context)(lines.map(_.value)))
+      }
+
+    Fails when reading from a location which is not a file/object
+   
+     ${ prop((loc: LocationTemporary, c: Component, lines: List[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p | c, lines.map(_.value))
+          r <- LocationIO.readLines(p)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when reading from a location that doesn't exist
+   
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          r <- LocationIO.readLines(p)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when writing to a location which already exists
+
+     ${ prop((loc: LocationTemporary, lines: List[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.map(_.value))
+          _ <- LocationIO.writeUtf8Lines(p, lines.map(_.value))
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+  LocationIO should be able to read/write strings from a location
+
+    From a sinlge file/object
+
+     ${ prop((loc: LocationTemporary, str: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p, str.value)
+          r <- LocationIO.readUtf8(p)
+        } yield r) must beOkValue(loc.context)(str.value))
+      }
+
+    Fails when reading from a location which is not a file/object
+   
+     ${ prop((loc: LocationTemporary, c: Component, str: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p | c, str.value)
+          r <- LocationIO.readUtf8(p)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when reading from a location that doesn't exist
+   
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          r <- LocationIO.readUtf8(p)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when writing to a location which already exists
+
+     ${ prop((loc: LocationTemporary, str: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p, str.value)
+          _ <- LocationIO.writeUtf8(p, str.value)
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+  LocationIO should be able to read/write bytes from a location
+
+    From a sinlge file/object
+
+     ${ prop((loc: LocationTemporary, value: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeBytes(p, value.value.getBytes)
+          r <- LocationIO.readBytes(p)
+        } yield r) must beOkValue(loc.context)(value.value.getBytes))
+      }
+
+    Fails when reading from a location which is not a file/object
+
+     ${ prop((loc: LocationTemporary, c: Component, value: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeBytes(p | c, value.value.getBytes)
+          r <- LocationIO.readBytes(p)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when reading from a location that doesn't exist
+   
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          r <- LocationIO.readBytes(p)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when writing to a location which already exists
+
+     ${ prop((loc: LocationTemporary, value: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeBytes(p, value.value.getBytes)
+          _ <- LocationIO.writeBytes(p, value.value.getBytes)
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+  LocationIO should be able to read/write using input/output streams
+
+    From a sinlge file/object
+
+     ${ prop { (loc: LocationTemporary, text: S) =>
+          var read: String = null
+          (for {
+            p <- LocationIO.fromRIO(loc.location)
+            _ <- LocationIO.writeUnsafe(p)(out => LocationIO.io(new DataOutputStream(out).writeUTF(text.value)))
+            r <- LocationIO.readUnsafe(p)(in => LocationIO.io(read = new DataInputStream(in).readUTF))
+          } yield read) must beOkValue(loc.context)(text.value)
+        }
+      }
+
+    Fails when reading from a location which is not a file/object
+
+     ${ prop((loc: LocationTemporary, c: Component, text: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUnsafe(p | c)(out => LocationIO.io(new DataOutputStream(out).writeUTF(text.value)))
+          r <- LocationIO.readUnsafe(p)(in => LocationIO.io(new DataInputStream(in).readUTF).void)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when reading from a location that doesn't exist
+   
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          r <- LocationIO.readUnsafe(p)(in => LocationIO.io(new DataInputStream(in).readUTF).void)
+        } yield r) must beRIOFail(loc.context))
+      }
+
+    Fails when writing to a location which already exists
+
+     ${ prop((loc: LocationTemporary, text: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUnsafe(p)(out => LocationIO.io(new DataOutputStream(out).writeUTF(text.value)))
+          _ <- LocationIO.writeUnsafe(p)(out => LocationIO.io(new DataOutputStream(out).writeUTF(text.value)))
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+  LocationIO should be able to stream lines
+
+    From a single file/object
+
+     ${ prop((loc: LocationTemporary, lines: List[N]) =>
+          (for {
+            p <- LocationIO.fromRIO(loc.location)
+            _ <- LocationIO.writeUtf8Lines(p, lines.map(_.value))
+            r <- LocationIO.streamLinesUTF8(p, List[String]())(_ :: _).map(_.reverse)
+          } yield r) must beOkValue(loc.context)(lines.map(_.value)))
+      }
+
+  LocationIO should be able to stream bytes
+
+    From a single file/object
+
+     ${ prop((loc: LocationTemporary, value: Array[Byte]) => {
+          val buffer = new Array[Byte](value.length)
+          (for {
+            p <- LocationIO.fromRIO(loc.location)
+            _ <- LocationIO.writeBytes(p, value)
+            _ <- LocationIO.streamBytes(p, 0)({ case (b, i) => Buffer.copy(b, buffer, i); i + b.length })
+          } yield buffer) must beOkValue(loc.context)(value)
+        })
+      }
+
+  LocationIO should be able to read part of a file/object
+
+    First line
+
+     ${ prop((loc: LocationTemporary, lines: List100[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+          f <- LocationIO.firstLine(p)
+        } yield f) must beOkValue(loc.context)(lines.value.headOption.map(_.value)))
+      }
+
+    Last line
+
+     ${ prop((loc: LocationTemporary, lines: List100[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+          l <- LocationIO.lastLine(p)
+        } yield l) must beOkValue(loc.context)(lines.value.lastOption.map(_.value)))
+      }
+
+    First n lines
+
+     ${ prop((loc: LocationTemporary, lines: List100[N], n: NaturalIntSmall) => n.value <= lines.value.length ==> {
+          (for {
+            p <- LocationIO.fromRIO(loc.location)
+            _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+            h <- LocationIO.head(p, n.value)
+          } yield h) must beOkValue(loc.context)(lines.value.take(n.value).map(_.value))
+        })
+      }
+
+    Last n lines
+
+     ${ prop((loc: LocationTemporary, lines: List100[N], n: NaturalIntSmall) => n.value <= lines.value.length ==> {
+          (for {
+            p <- LocationIO.fromRIO(loc.location)
+            _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+            t <- LocationIO.tail(p, n.value)
+          } yield t) must beOkValue(loc.context)(lines.value.drop(lines.value.size - n.value).map(_.value))
+        })
+      }
+
+    Last n lines with the number of total lines
+
+     ${ prop((loc: LocationTemporary, lines: List100[N], n: NaturalIntSmall) => n.value <= lines.value.length ==> {
+          (for {
+            p <- LocationIO.fromRIO(loc.location)
+            _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+            t <- LocationIO.tailAndLinesNumber(p, n.value)
+          } yield t._2) must beOkValue(loc.context)(lines.value.length)
+        })
+      }
+
+    Head of a file with all line numbers <==> readLines
+
+     ${ prop((loc: LocationTemporary, lines: List100[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+          h <- LocationIO.head(p, lines.value.size)
+        } yield h) must beOkValue(loc.context)(lines.value.map(_.value)))
+      }
+
+    Tail of a file with all line numbers <==> readLines
+
+     ${ prop((loc: LocationTemporary, lines: List100[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+          t <- LocationIO.tail(p, lines.value.size)
+        } yield t) must beOkValue(loc.context)(lines.value.map(_.value)))
+      }
+
+    Sha1 of a file <==> mundane.Checksum("SHA1")
+
+     ${ prop((loc: LocationTemporary, lines: List100[N]) => (for {
+          p  <- LocationIO.fromRIO(loc.location)
+          _  <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+          b  <- LocationIO.readBytes(p)
+          s1 <- LocationIO.reduceBytes(p, BytesReducer.sha1)
+          s2  = Checksum.bytes(b, SHA1).hash
+        } yield s1 -> s2) must beOkLike(loc.context)(t => t._1 ==== t._2))
+      }
+
+    Line count of a file <==> mundane.LineCount
+
+     ${ prop((loc: LocationTemporary, lines: List100[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.value.map(_.value))
+          n <- LocationIO.reduceLinesUTF8(p, LineReducer.linesNumber)
+        } yield n) must beOkValue(loc.context)(lines.value.length))
+      }
+
+  LocationIO can do delete a location
+
+    delete will only delete a file/object
+
+     ${ prop((loc: LocationTemporary, data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p, data.value)
+          _ <- LocationIO.delete(p)
+          e <- LocationIO.exists(p)
+        } yield e) must beOkValue(loc.context)(false))
+      }
+
+    deleteAll will delete a file/object/dir/prefix
+
+     ${ prop((loc: LocationTemporary, dp: DistinctPair[Component], data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p | dp.first, data.value)
+          _ <- LocationIO.writeUtf8(p | dp.second, data.value)
+          _ <- LocationIO.deleteAll(p)
+          e <- LocationIO.exists(p)
+        } yield e) must beOkValue(loc.context)(false))
+      }
+
+    delete fails if the location doesn't exist
+
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.delete(p)
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+    deleteAll fails if the location doesn't exist
+
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.deleteAll(p)
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+    delete fails if the location is a dir/prefix
+
+     ${ prop((loc: LocationTemporary, c: Component, data: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p | c, data.value)
+          _ <- LocationIO.delete(p)
+        } yield ()) must beRIOFail(loc.context))
+      }
+
+  LocationIO can copy a file/object from one location to another
+
+    Successful when destination does not exist and overwrite is set to false
+
+     ${ prop((loc1: LocationTemporary, loc2: LocationTemporary, data: S) => (for {
+          p1 <- LocationIO.fromRIO(loc1.location)
+          p2 <- LocationIO.fromRIO(loc2.location)
+          _  <- LocationIO.writeUtf8(p1, data.value)
+          _  <- LocationIO.copyFile(p1, p2, false)
+          r  <- LocationIO.readUtf8(p2)
+        } yield r) must beOkValue(loc1.contextAll)(data.value))
+     }
+
+    Successful when destination exists and overwrite is set to true
+
+     ${ prop((loc1: LocationTemporary, loc2: LocationTemporary, data1: S, data2: S) => (for {
+          p1 <- LocationIO.fromRIO(loc1.location)
+          p2 <- LocationIO.fromRIO(loc2.location)
+          _  <- LocationIO.writeUtf8(p1, data1.value)
+          _  <- LocationIO.writeUtf8(p2, data2.value)
+          _  <- LocationIO.copyFile(p1, p2, true)
+          r  <- LocationIO.readUtf8(p2)
+        } yield r) must beOkValue(loc1.contextAll)(data1.value))
+     }
+
+    Fails when the destination does exist and overwrite is set to false
+
+     ${ prop((loc1: LocationTemporary, loc2: LocationTemporary, data: S) => (for {
+          p1 <- LocationIO.fromRIO(loc1.location)
+          p2 <- LocationIO.fromRIO(loc2.location)
+          _  <- LocationIO.writeUtf8(p1, data.value)
+          _  <- LocationIO.writeUtf8(p2, data.value)
+          _  <- LocationIO.copyFile(p1, p2, false)
+        } yield ()) must beRIOFail(loc1.contextAll))
+     }
+
+    Fails when the source doesn't exist
+
+     ${ prop((loc: LocationTemporary) => (for {
+          p1 <- LocationIO.fromRIO(loc.location)
+          p2 <- LocationIO.fromRIO(loc.location)
+          _  <- LocationIO.copyFile(p1, p2, false)
+        } yield ()) must beRIOFail(loc.contextAll))
+     }
 
 """
   override implicit def defaultParameters: Parameters =
     new Parameters(minTestsOk = 5, workers = 3, maxSize = 10)
 
-  def isDirectory = prop((loc: LocationTemporary, id: Ident, data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p </> FilePath.unsafe(id.value), data)
-    e <- i.isDirectory(p)
-  } yield e ==== true)
+  implicit def LocationIOArbitrary[A : Arbitrary]: Arbitrary[LocationIO[A]] =
+    Arbitrary(arbitrary[A].map(LocationIO.ok))
 
-  def isFile = prop((loc: LocationTemporary, data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p, data)
-    e <- i.isDirectory(p)
-  } yield e ==== false)
-
-  def deleteAll = prop((loc: LocationTemporary, dp: DistinctPair[Ident], data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.first.value), data)
-    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.second.value), data)
-    _ <- i.deleteAll(p)
-    l <- i.list(p)
-  } yield l ==== nil)
-
-  def delete = prop((loc: LocationTemporary, data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p, data)
-    _ <- i.delete(p)
-    e <- i.exists(p)
-  } yield e ==== false)
-
-  def readWriteLines = prop((loc: LocationTemporary, lines: List[String]) => {
-    // we remove spaces from lines in this test
-    // because reading lines will split the text on newlines
-    val linesWithoutSpaces = lines.map(_.replaceAll("\\s", ""))
-    for {
-      p <- loc.location
-      i <- loc.io
-      _ <- i.writeUtf8Lines(p, linesWithoutSpaces)
-      r <- i.readLines(p)
-    } yield r ==== linesWithoutSpaces
-  })
-
-  def readWriteUnsafe = prop { (loc: LocationTemporary, text: String) =>
-    var read: String = null
-    for {
-      p <- loc.location
-      i <- loc.io
-      _ <- i.writeUnsafe(p)(out => RIO.io(new DataOutputStream(out).writeUTF(text)))
-      r <- i.readUnsafe(p)(in => RIO.io(read = new DataInputStream(in).readUTF))
-    } yield read ==== text
-  }
-
-  def streamLines = prop((loc: LocationTemporary, lines: List[String]) => {
-    val linesWithoutSpaces = lines.map(_.replaceAll("\\s", ""))
-    for {
-      p <- loc.location
-      i <- loc.io
-      _ <- i.writeUtf8Lines(p, linesWithoutSpaces)
-      r <- i.streamLinesUTF8(p, List[String]())(_ :: _).map(_.reverse)
-    } yield r ==== linesWithoutSpaces
-  })
-
-  def list = prop((loc: LocationTemporary, dp: DistinctPair[Ident], data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.first.value), data)
-    _ <- i.writeUtf8(p </> FilePath.unsafe(dp.second.value), data)
-    r <- i.list(p)
-    l = r.length
-  } yield r.toSet -> l ==== Set(dp.first.value, dp.second.value).map(FileName.unsafe).map(p </> _) -> 2)
-
-  def exists = prop((loc: LocationTemporary, data: String) => for {
-    p <- loc.location
-    i <- loc.io
-    _ <- i.writeUtf8(p, data)
-    e <- i.exists(p)
-  } yield e ==== true)
-
-  def syncFile = prop((from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte]) =>
-    for {
-      f   <- from.location
-      i   <- from.io
-      _   <- i.writeBytes(f, bytes)
-      t   <- to.location
-      _   <- i.syncFile(f, t)
-      bs  <- i.readBytes(t)
-    } yield bs must_== bytes
-  )
-
-  def syncFileFail = prop { (from: LocationTemporary, to: LocationTemporary, bytes: Array[Byte]) =>
-    val result = for {
-      f <- from.location
-      i <- from.io
-      _ <- i.writeBytes(f, bytes)
-      t <- to.location
-      _ <- i.writeBytes(t, bytes)
-      _ <- i.syncFile(f, t)
-    } yield ()
-
-    val fromToResult = for {
-      f <- from.location
-      t <- to.location
-      r <- result.map(_ => true).orElse(false)
-    } yield (f, t, r)
-
-    fromToResult must beOkLike {
-      case (f: S3Location, t: LocalLocation, r)   => r
-      case (f: S3Location, t: HdfsLocation, r)    => r
-      case (f: LocalLocation, t: HdfsLocation, r) => r
-      case (_, _ , r) => !r
-    }
-  }
-
-  def syncFiles = prop((from: LocationTemporary, isDirectory: Boolean, fileName: Ident, otherFileNames: List10[Ident], to: LocationTemporary, content: S) =>
-    for {
-      i     <- to.io
-      f     <- from.location
-      // we need at least one file name to create a directory
-      fileNames = (fileName +: otherFileNames.value).map(_.value).distinct
-      _     <-
-               if (isDirectory) fileNames.traverseU(name => i.writeUtf8(f </> FileName.unsafe(name), content.value))
-               else             i.writeUtf8(f, content.value)
-      t     <- to.location
-      rs    <- i.syncFiles(f, t)
-      ins   <- if (isDirectory) i.list(f) else RIO.ok(List(f))
-      fs    <- if (isDirectory) i.list(t) else RIO.ok(List())
-      isDir <- i.isDirectory(t)
-    } yield
-      if (isDirectory)
-        ("the target is a directory" ==> isDir) && (fs must haveSize(fileNames.size)) &&
-        ("the copied files are the list of files in the directory" ==> (rs ==== ins))
-      else
-        ("the target is not a directory" ==> !isDir) && (fs must haveSize(0))
-  )
-
-  def fileFirst = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
-    for {
-      ll         <- writeLines(loc, linesNumber)
-      (l, lines) =  ll
-      i          <- loc.io
-      line       <- i.firstLine(l)
-    } yield line must_== lines.headOption
-  }
-
-  def fileLast = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
-    for {
-      ll         <- writeLines(loc, linesNumber)
-      (l, lines) =  ll
-      i          <- loc.io
-      line       <- i.lastLine(l)
-    } yield line must_== lines.lastOption
-  }
-
-  def fileHead = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall, requestedLinesNumber: NaturalIntSmall) =>
-    for {
-      ll         <- writeLines(loc, linesNumber)
-      (l, lines) =  ll
-      i          <- loc.io
-      head       <- i.head(l, requestedLinesNumber.value)
-    } yield head must_== lines.take(requestedLinesNumber.value)
-  }
-
-  def fileTail = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall, requestedLinesNumber: NaturalIntSmall) =>
-    for {
-      ll         <- writeLines(loc, linesNumber)
-      (l, lines) =  ll
-      i          <- loc.io
-      tail       <- i.tail(l, requestedLinesNumber.value)
-    } yield tail must_== lines.drop(lines.size - requestedLinesNumber.value)
-  }
-
-  def fileTailAndLinesNumber = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall, requestedLinesNumber: NaturalIntSmall) =>
-    for {
-      ll <- writeLines(loc, linesNumber)
-      (l, lines) = ll
-      i     <- loc.io
-      tailAndNb <- i.tailAndLinesNumber(l, requestedLinesNumber.value)
-    } yield tailAndNb._2 must_== linesNumber.value
-  }
-
-  def fileHeadAllIsReadLines = prop { (loc: LocationTemporary, linesNumber: PositiveIntSmall) =>
-    val lines = (1 to linesNumber.value).toList.map("line"+_)
-    for {
-      path <- LocalTemporary(loc.path).file
-      l    =  LocalLocation(path.path)
-      i    <- loc.io
-      _    <- i.writeUtf8Lines(l, lines)
-      head <- i.head(l, lines.size)
-      all  <- Files.readLines(path, "UTF-8")
-    } yield head must_== all
-  }
-
-  def fileTailAllIsReadLines = prop { (loc: LocationTemporary, linesNumber: PositiveIntSmall) =>
-    val lines = (1 to linesNumber.value).toList.map("line"+_)
-    for {
-      path <- LocalTemporary(loc.path).file
-      l    =  LocalLocation(path.path)
-      i    <- loc.io
-      _    <- i.writeUtf8Lines(l, lines)
-      tail <- i.tail(l, lines.size)
-      all  <- Files.readLines(path, "UTF-8")
-    } yield tail must_== all
-  }
-
-  def sha1LikeMundane = prop { (loc: LocationTemporary, linesNumber: PositiveIntSmall) =>
-    val lines = (1 to linesNumber.value).toList.map("line"+_)
-    for {
-      path <- LocalTemporary(loc.path).file
-      l    =  LocalLocation(path.path)
-      i    <- loc.io
-      _    <- i.writeUtf8Lines(l, lines)
-      s1   <- i.reduceBytes(l, BytesReducer.sha1)
-      s2   <- Checksum.file(path, SHA1).map(_.hash)
-    } yield s1 ==== s2
-  }
-
-  def linecountLikeMundane = prop { (loc: LocationTemporary, linesNumber: NaturalIntSmall) =>
-    val lines = (0 to linesNumber.value).toList.map("line"+_)
-    for {
-      path <- LocalTemporary(loc.path).file
-      l    =  LocalLocation(path.path)
-      i    <- loc.io
-      _    <- i.writeUtf8Lines(l, lines)
-      n1   <- i.reduceLinesUTF8(l, LineReducer.linesNumber)
-      n2   <- RIO.fromIO(LineCount.count(path.toFile).map(_.count))
-    } yield n1 must_== n2
-  }
-
-  /**
-   * HELPERS
-   */
-  def writeLines(loc: LocationTemporary, linesNumber: NaturalIntSmall): RIO[(Location, List[String])] = {
-    val lines = (0 until linesNumber.value).toList.map("line" + _)
-    for {
-      l <- loc.location
-      i <- loc.io
-      _ <- i.writeUtf8Lines(l, lines)
-    } yield (l, lines)
-  }
+  implicit def LocationIOEqual[A]: Equal[LocationIO[Int]] =
+    Equal.equal((a, b) => a.run(NoneIOContext).unsafePerformIO == b.run(NoneIOContext).unsafePerformIO)
 }

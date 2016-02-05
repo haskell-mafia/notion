@@ -15,11 +15,9 @@ import argonaut._, Argonaut._
 sealed trait Location {
 
   override def toString: String =
-    this match {
-      case HdfsLocation(p)  => s"HdfsLocation(HdfsPath(${p.path}))"
-      case S3Location(p)    => s"S3Location(${p.render})"
-      case LocalLocation(p) => s"LocalLocation(LocalPath(${p.path}))"
-    }
+    fold(l => s"LocalLocation(LocalPath(${l.path}))"
+       , h => s"HdfsLocation(HdfsPath(${h.path}))"
+       , s => s"S3Location(${s.render})")
 
   def fold[X](l: LocalPath => X, h: HdfsPath => X, s: S3Pattern => X): X =
     this match {
@@ -30,9 +28,8 @@ sealed trait Location {
 
   def |(component: Component):  Location =
     fold(l => LocalLocation(l | component)
-       , h => HdfsLocation(h| component)
-       // TODO is this ok?
-       , s => S3Location(s.copy(unknown = s.unknown + "/" + component.name)))
+       , h => HdfsLocation(h | component)
+       , s => S3Location(s.copy(unknown = S3Operations.concat(s.unknown, component.name))))
 }
 
 case class HdfsLocation(path: HdfsPath) extends Location
@@ -89,4 +86,20 @@ object Location {
 
   implicit def LocationEqual: Equal[Location] =
     Equal.equalA
+
+  implicit def LocationOrder: Order[Location] =
+    Order.order({
+      case (LocalLocation(x), LocalLocation(y)) => x.?|?(y)
+      case (LocalLocation(x), HdfsLocation(y))  => Ordering.LT
+      case (LocalLocation(x), S3Location(y))    => Ordering.LT
+      case (HdfsLocation(x), LocalLocation(y))  => Ordering.GT
+      case (HdfsLocation(x), HdfsLocation(y))   => x.?|?(y)
+      case (HdfsLocation(x), S3Location(y))     => Ordering.LT
+      case (S3Location(x), LocalLocation(y))    => Ordering.GT
+      case (S3Location(x), HdfsLocation(y))     => Ordering.GT
+      case (S3Location(x), S3Location(y))       => (x.bucket, x.unknown).?|?(y.bucket -> y.unknown)
+    })
+
+  implicit def LocationOrdering: scala.Ordering[Location] =
+    LocationOrder.toScalaOrdering
 }

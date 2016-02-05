@@ -18,6 +18,9 @@ case class LocationTemporary(t: T, path: String, client: AmazonS3Client, conf: C
   override def toString: String =
     s"LocationTemporary($t, $path)"
 
+  def contextAll: IOContext =
+    HdfsS3IOContext(conf, client)
+
   def location: RIO[Location] = t match {
     case (T.Posix) =>
       localLocation
