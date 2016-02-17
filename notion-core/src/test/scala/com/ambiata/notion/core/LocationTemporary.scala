@@ -12,11 +12,15 @@ import com.ambiata.saws.s3._
 import org.apache.hadoop.conf.Configuration
 import org.scalacheck._, Arbitrary._
 
-import scalaz._, Scalaz._
-
-case class LocationTemporary(t: T, path: String, client: AmazonS3Client, conf: Configuration) {
+case class LocationTemporary(t: T, seed: String, client: AmazonS3Client, conf: Configuration) {
   override def toString: String =
-    s"LocationTemporary($t, $path)"
+    s"LocationTemporary($t, $seed, AmazonS3Client(...), Configuration(...))"
+
+  def context: IOContext = t match {
+    case (T.Posix) => NoneIOContext
+    case (T.S3)    => S3IOContext(client)
+    case (T.Hdfs)  => HdfsIOContext(conf)
+  }
 
   def contextAll: IOContext =
     HdfsS3IOContext(conf, client)
@@ -30,19 +34,14 @@ case class LocationTemporary(t: T, path: String, client: AmazonS3Client, conf: C
       hdfsLocation
   }
 
-  def io: RIO[LocationIO] =
-    LocationIO(conf, client).pure[RIO]
-
   def hdfsLocation: RIO[Location] =
-    HdfsTemporary(path).path.map(p =>
-      HdfsLocation(p.toString)).run(conf).map(l => l)
+    HdfsTemporary(HdfsTemporary.hdfsTemporaryPath, seed).path.run(conf).map(HdfsLocation.apply)
 
   def s3Location: RIO[Location] =
-    S3Temporary(path).address.map(s =>
-      S3Location(s.bucket, s.key)).run(client).map(_._2)
+    S3Temporary(seed).pattern.map(S3Location.apply).run(client).map(_._2)
 
   def localLocation: RIO[Location] =
-    LocalTemporary(path).file.map(f => LocalLocation(f.path))
+    LocalTemporary(Temporary.uniqueLocalPath, seed).path.map(LocalLocation.apply)
 }
 
 object LocationTemporary {
