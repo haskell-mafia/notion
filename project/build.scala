@@ -2,7 +2,7 @@ import sbt._, Keys._, KeyRanks._
 import sbtassembly.Plugin._
 import AssemblyKeys._
 import com.ambiata.promulgate.project.ProjectPlugin._
-import scoverage.ScoverageSbtPlugin._
+import scoverage.ScoverageKeys._
 
 object build extends Build {
   type Settings = Def.Setting[_]
@@ -34,6 +34,7 @@ object build extends Build {
   , fork in run := true
   , resolvers := depend.resolvers
   , publishArtifact in (Test, packageBin) := true
+  , coverageHighlighting := false
   ) ++ Seq(prompt)
 
   lazy val core = Project(
