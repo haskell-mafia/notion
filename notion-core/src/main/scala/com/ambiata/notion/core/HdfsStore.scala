@@ -12,8 +12,6 @@ import scodec.bits.ByteVector
 
 import scala.io.Codec
 import scalaz.{Store => _, _}, Scalaz._
-import scalaz.concurrent._
-import scalaz.stream._
 
 case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] with ReadOnlyStore[RIO] {
   def readOnly: ReadOnlyStore[RIO] =
@@ -92,14 +90,6 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
 
     def write(key: Key, data: ByteVector): RIO[Unit] =
       unsafe.withOutputStream(key)(Streams.writeBytes(_, data.toArray))
-
-    def source(key: Key): Process[Task, ByteVector] =
-      scalaz.stream.io.chunkR(FileSystem.get(conf).open(keyToHdfsPath(key).toHPath)).evalMap(_(1024 * 1024))
-
-    def sink(key: Key): Sink[Task, ByteVector] =
-      io.resource(Task.delay(new PipedOutputStream))(out => Task.delay(out.close))(
-        out => io.resource(Task.delay(new PipedInputStream))(in => Task.delay(in.close))(
-          in => Task.now((bytes: ByteVector) => Task.delay(out.write(bytes.toArray)))).toTask)
   }
 
   val strings: StoreStrings[RIO] = new StoreStrings[RIO] {
@@ -116,12 +106,6 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
 
     def write(key: Key, data: String): RIO[Unit] =
       strings.write(key, data, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      bytes.source(key) |> scalaz.stream.text.utf8Decode
-
-    def sink(key: Key): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s.getBytes("UTF-8"))))
   }
 
   val lines: StoreLines[RIO] = new StoreLines[RIO] {
@@ -130,12 +114,6 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
 
     def write(key: Key, data: List[String], codec: Codec): RIO[Unit] =
       strings.write(key, Lists.prepareForFile(data), codec)
-
-    def source(key: Key, codec: Codec): Process[Task, String] =
-      scalaz.stream.io.linesR(FileSystem.get(conf).open(keyToHdfsPath(key).toHPath))(codec)
-
-    def sink(key: Key, codec: Codec): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s"$s\n".getBytes(codec.name))))
   }
 
   val linesUtf8: StoreLinesUtf8[RIO] = new StoreLinesUtf8[RIO] {
@@ -144,12 +122,6 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
 
     def write(key: Key, data: List[String]): RIO[Unit] =
       lines.write(key, data, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      lines.source(key, Codec.UTF8)
-
-    def sink(key: Key): Sink[Task, String] =
-      lines.sink(key, Codec.UTF8)
   }
 
   def withInputStreamValue[A](key: Key)(f: InputStream => RIO[A]): RIO[A] =

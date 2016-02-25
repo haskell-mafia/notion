@@ -10,7 +10,7 @@ import java.util.UUID
 import java.io.{InputStream, OutputStream}
 import java.io.{PipedInputStream, PipedOutputStream}
 import scala.io.Codec
-import scalaz.{Store => _, _}, Scalaz._, scalaz.stream._, scalaz.concurrent._, effect.IO, effect.Effect._
+import scalaz.{Store => _, _}, Scalaz._, effect.IO, effect.Effect._
 import scodec.bits.ByteVector
 
 case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnlyStore[RIO] {
@@ -44,9 +44,6 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
   val bytes: StoreBytesRead[RIO] = new StoreBytesRead[RIO] {
     def read(key: Key): RIO[ByteVector] =
       run { (s3 | key.name).getBytes.map(ByteVector.apply) }
-
-    def source(key: Key): Process[Task, ByteVector] =
-      scalaz.stream.io.chunkR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent).evalMap(_(1024 * 1024))
   }
 
   val strings: StoreStringsRead[RIO] = new StoreStringsRead[RIO] {
@@ -57,25 +54,16 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
   val utf8: StoreUtf8Read[RIO] = new StoreUtf8Read[RIO] {
     def read(key: Key): RIO[String] =
       strings.read(key, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      bytes.source(key) |> scalaz.stream.text.utf8Decode
   }
 
   val lines: StoreLinesRead[RIO] = new StoreLinesRead[RIO] {
     def read(key: Key, codec: Codec): RIO[List[String]] =
       strings.read(key, codec).map(_.lines.toList)
-
-    def source(key: Key, codec: Codec): Process[Task, String] =
-      scalaz.stream.io.linesR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent)(codec)
   }
 
   val linesUtf8: StoreLinesUtf8Read[RIO] = new StoreLinesUtf8Read[RIO] {
     def read(key: Key): RIO[List[String]] =
       lines.read(key, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      lines.source(key, Codec.UTF8)
   }
 
   val unsafe: StoreUnsafeRead[RIO] = new StoreUnsafeRead[RIO] {
@@ -140,16 +128,8 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
     def read(key: Key): RIO[ByteVector] =
       readOnly.bytes.read(key)
 
-    def source(key: Key): Process[Task, ByteVector] =
-      readOnly.bytes.source(key)
-
     def write(key: Key, data: ByteVector): RIO[Unit] =
       run { (s3 | key.name).putBytes(data.toArray).void }
-
-    def sink(key: Key): Sink[Task, ByteVector] =
-      io.resource(Task.delay(new PipedOutputStream))(out => Task.delay(out.close))(
-        out => io.resource(Task.delay(new PipedInputStream))(in => Task.delay(in.close))(
-          in => Task.now((bytes: ByteVector) => Task.delay(out.write(bytes.toArray)))).toTask)
   }
 
   val strings: StoreStrings[RIO] = new StoreStrings[RIO] {
@@ -164,42 +144,24 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
     def read(key: Key): RIO[String] =
       readOnly.utf8.read(key)
 
-    def source(key: Key): Process[Task, String] =
-      readOnly.utf8.source(key)
-
     def write(key: Key, data: String): RIO[Unit] =
       strings.write(key, data, Codec.UTF8)
-
-    def sink(key: Key): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s.getBytes("UTF-8"))))
   }
 
   val lines: StoreLines[RIO] = new StoreLines[RIO] {
     def read(key: Key, codec: Codec): RIO[List[String]] =
       readOnly.lines.read(key, codec)
 
-    def source(key: Key, codec: Codec): Process[Task, String] =
-      readOnly.lines.source(key, codec)
-
     def write(key: Key, data: List[String], codec: Codec): RIO[Unit] =
       strings.write(key, Lists.prepareForFile(data), codec)
-
-    def sink(key: Key, codec: Codec): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s"$s\n".getBytes(codec.name))))
   }
 
   val linesUtf8: StoreLinesUtf8[RIO] = new StoreLinesUtf8[RIO] {
     def read(key: Key): RIO[List[String]] =
       readOnly.linesUtf8.read(key)
 
-    def source(key: Key): Process[Task, String] =
-      readOnly.linesUtf8.source(key)
-
     def write(key: Key, data: List[String]): RIO[Unit] =
       lines.write(key, data, Codec.UTF8)
-
-    def sink(key: Key): Sink[Task, String] =
-      lines.sink(key, Codec.UTF8)
   }
 
   val unsafe: StoreUnsafe[RIO] = new StoreUnsafe[RIO] {

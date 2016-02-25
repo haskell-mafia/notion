@@ -6,7 +6,7 @@ import com.ambiata.mundane.data._
 import java.io.{InputStream, OutputStream}
 
 import scala.io.Codec
-import scalaz._, Scalaz._, scalaz.stream._, scalaz.concurrent._, effect.IO, effect.Effect._
+import scalaz._, Scalaz._, effect.IO, effect.Effect._
 import scodec.bits.ByteVector
 
 // FIX pull out "derived" functions so the implementation can be shared with s3/hdfs impls.
@@ -78,15 +78,6 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
 
     def write(key: Key, data: ByteVector): RIO[Unit] =
       keyToLocalPath(key).writeBytes(data.toArray).void
-
-    def source(key: Key): Process[Task, ByteVector] =
-      scalaz.stream.io.chunkR(new java.io.FileInputStream(keyToLocalPath(key).path.path)).evalMap(_(1024 * 1024))
-
-    def sink(key: Key): Sink[Task, ByteVector] = {
-      val file = keyToLocalPath(key).toFile
-      file.getParentFile.mkdirs
-      scalaz.stream.io.chunkW(new java.io.FileOutputStream(file))
-    }
   }
 
   val strings: StoreStrings[RIO] = new StoreStrings[RIO] {
@@ -107,12 +98,6 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
 
     def write(key: Key, data: String): RIO[Unit] =
       strings.write(key, data, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      bytes.source(key) |> scalaz.stream.text.utf8Decode
-
-    def sink(key: Key): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s.getBytes("UTF-8"))))
   }
 
   val lines: StoreLines[RIO] = new StoreLines[RIO] {
@@ -121,12 +106,6 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
 
     def write(key: Key, data: List[String], codec: Codec): RIO[Unit] =
       strings.write(key, Lists.prepareForFile(data), codec)
-
-    def source(key: Key, codec: Codec): Process[Task, String] =
-      scalaz.stream.io.linesR(new java.io.FileInputStream(keyToLocalPath(key).path.path))(codec)
-
-    def sink(key: Key, codec: Codec): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s"$s\n".getBytes(codec.name))))
   }
 
   val linesUtf8: StoreLinesUtf8[RIO] = new StoreLinesUtf8[RIO] {
@@ -135,12 +114,6 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
 
     def write(key: Key, data: List[String]): RIO[Unit] =
       lines.write(key, data, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      lines.source(key, Codec.UTF8)
-
-    def sink(key: Key): Sink[Task, String] =
-      lines.sink(key, Codec.UTF8)
   }
 
   val unsafe: StoreUnsafe[RIO] = new StoreUnsafe[RIO] {

@@ -4,7 +4,6 @@ import com.ambiata.mundane.io._
 import java.io.{InputStream, OutputStream}
 
 import scala.io.Codec
-import scalaz._, scalaz.stream._, scalaz.concurrent._
 import scodec.bits.ByteVector
 
 trait Store[F[_]] extends WriteOnlyStore[F] with ReadOnlyStore[F] {
@@ -68,12 +67,10 @@ trait StoreBytes[F[_]] extends StoreBytesRead[F] with StoreBytesWrite[F]
 
 trait StoreBytesRead[F[_]] {
   def read(key: Key): F[ByteVector]
-  def source(key: Key): Process[Task, ByteVector]
 }
 
 trait StoreBytesWrite[F[_]] {
   def write(key: Key, data: ByteVector): F[Unit]
-  def sink(key: Key): Sink[Task, ByteVector]
 }
 
 trait StoreStrings[F[_]] extends StoreStringsRead[F] with StoreStringsWrite[F]
@@ -90,36 +87,30 @@ trait StoreUtf8[F[_]] extends StoreUtf8Read[F] with StoreUtf8Write[F]
 
 trait StoreUtf8Read[F[_]] {
   def read(key: Key): F[String]
-  def source(key: Key): Process[Task, String]
 }
 
 trait StoreUtf8Write[F[_]] {
   def write(key: Key, data: String): F[Unit]
-  def sink(key: Key): Sink[Task, String]
 }
 
 trait StoreLines[F[_]] extends StoreLinesRead[F] with StoreLinesWrite[F]
 
 trait StoreLinesRead[F[_]] {
   def read(key: Key, codec: Codec): F[List[String]]
-  def source(key: Key, codec: Codec): Process[Task, String]
 }
 
 trait StoreLinesWrite[F[_]] {
   def write(key: Key, data: List[String], codec: Codec): F[Unit]
-  def sink(key: Key, codec: Codec): Sink[Task, String]
 }
 
 trait StoreLinesUtf8[F[_]] extends StoreLinesUtf8Read[F] with StoreLinesUtf8Write[F]
 
 trait StoreLinesUtf8Read[F[_]]  {
   def read(key: Key): F[List[String]]
-  def source(key: Key): Process[Task, String]
 }
 
 trait StoreLinesUtf8Write[F[_]]  {
   def write(key: Key, data: List[String]): F[Unit]
-  def sink(key: Key): Sink[Task, String]
 }
 
 trait StoreUnsafe[F[_]] extends StoreUnsafeRead[F] with StoreUnsafeWrite[F]
