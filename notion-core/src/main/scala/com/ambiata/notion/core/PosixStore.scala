@@ -3,6 +3,7 @@ package com.ambiata.notion.core
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.data._
+import com.ambiata.mundane.path._
 import java.io.{InputStream, OutputStream}
 
 import scala.io.Codec
@@ -14,9 +15,11 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
   def readOnly: ReadOnlyStore[RIO] =
     this
 
-  def list(prefix: Key): RIO[List[Key]] =
-    keyToLocalPath(prefix).listFilesRecursively.map(files =>
-      files.flatMap(_.toLocalPath.rebaseTo(root)).map(localPathToKey))
+  def list(prefix: Key): RIO[List[Key]] = {
+    val p = keyToLocalPath(prefix)
+    p.onExists(p.listFilesRecursively.map(files =>
+      files.flatMap(_.toLocalPath.rebaseTo(root)).map(p => Key(p.path.names.toVector))), RIO.ok(Nil))
+  }
 
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     list(prefix).map(_.filter(predicate))
@@ -24,8 +27,9 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
   def find(prefix: Key, predicate: Key => Boolean): RIO[Option[Key]] =
     list(prefix).map(_.find(predicate))
 
+  /* Note: This was broken before, it would return true if Key was a directory */
   def exists(key: Key): RIO[Boolean] =
-    keyToLocalPath(key).exists
+    keyToLocalPath(key).determine.map(_.cata(_.isLeft, false))
 
   def delete(key: Key): RIO[Unit] =
     keyToLocalPath(key).determineFile.flatMap(_.delete)
@@ -121,15 +125,15 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
       keyToLocalPath(key).readUnsafe(f)
 
     /* TODO Should we add writeWith to LocalPath? */
-    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      keyToLocalPath(key).dirname.mkdirs >> RIO.using(keyToLocalPath(key).path.toOutputStream)(f)
+    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] = for {
+      e <- exists(key)
+      _ <- RIO.when(e, RIO.fail(s"Can not overwrite key ${key}"))
+      p  = keyToLocalPath(key)
+      _ <- p.dirname.mkdirs
+      _ <- RIO.using(p.path.toOutputStream)(f)
+    } yield ()
   }
 
-  /* WARNING: This is a lossy operation, empty components will be dropped */
-  private def keyToLocalPath(key: Key): LocalPath =
-    (root / LocalPath.fromString(key.name).path)
-
-  /* WARNING: This is a lossy operation */
-  private def localPathToKey(p: LocalPath): Key =
-    Key(p.path.names.map(KeyName.fromComponent).toVector)
+  def keyToLocalPath(key: Key): LocalPath =
+    LocalPath(Path.fromList(root.path, key.components.toList))
 }

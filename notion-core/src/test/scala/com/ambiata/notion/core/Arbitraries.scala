@@ -3,6 +3,7 @@ package com.ambiata.notion.core
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.path._
 import com.ambiata.mundane.path.Arbitraries._
+import com.ambiata.mundane.testing._
 import com.ambiata.notion.core.TemporaryType._
 import com.ambiata.poacher.hdfs.HdfsPath
 import com.ambiata.saws.s3.S3Pattern
@@ -20,6 +21,13 @@ object Arbitraries {
   implicit def TemporaryTypeArbitrary: Arbitrary[TemporaryType] = {
     Arbitrary(if (awsEnabled) Gen.oneOf(Posix, S3, Hdfs) else Gen.oneOf(Posix, Hdfs))
   }
+
+  implicit def KeyArbitrary: Arbitrary[Key] =
+    Arbitrary(arbitrary[KeyEntry].map(e => Key.unsafe(e.full)))
+
+  case class KeyFamily(keys: List[Key])
+  implicit def KeyFamilyArbitrary: Arbitrary[KeyFamily] =
+    Arbitrary(arbitrary[Keys].map(ks => KeyFamily(ks.keys.map(e => Key.unsafe(e.full)))))
 
   implicit def LocationArbitrary: Arbitrary[Location] = Arbitrary {
     Gen.frequency((1, arbitrary[HdfsLocation]: Gen[Location]),

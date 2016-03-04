@@ -5,6 +5,7 @@ import java.io.{InputStream, OutputStream, PipedInputStream, PipedOutputStream}
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.data._
 import com.ambiata.mundane.io._
+import com.ambiata.mundane.path._
 import com.ambiata.poacher.hdfs._
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path => HPath}
@@ -17,13 +18,11 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
   def readOnly: ReadOnlyStore[RIO] =
     this
 
-  def basePath: HPath =
-    root.toHPath
-
   def list(prefix: Key): RIO[List[Key]] =
     hdfs {
-      keyToHdfsPath(prefix).listFilesRecursively.map(files =>
-        files.flatMap(_.toHdfsPath.rebaseTo(root)).map(hdfsPathToKey))
+      val p = keyToHdfsPath(prefix)
+      p.onExists(p.listFilesRecursively.map(files =>
+          files.flatMap(_.toHdfsPath.rebaseTo(root)).map(p => Key(p.path.names.toVector))), Hdfs.ok(Nil))
     }
 
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
@@ -58,9 +57,15 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
       , d => Hdfs.fail(s"Can not copy key, not an object. ${d}").void)
     }
 
+  /* TODO Check current logic:
+   *      - store contains key a/b/c
+   *      - in = a/b, out = d
+   *      - the key d/a/b/c will be created
+   *      - is this correct? or should the new key be d/c?
+   */
   def mirror(in: Key, out: Key): RIO[Unit] = for {
-    paths <- list(in)
-    _     <- paths.traverseU(source => copy(source, out / source))
+    keys <- list(in)
+    _    <- keys.traverseU(source => copy(source, out / source))
   } yield ()
 
   def moveTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
@@ -131,18 +136,16 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
       withInputStreamValue[Unit](key)(f)
 
-    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      hdfs { keyToHdfsPath(key).writeWith(o => Hdfs.fromRIO(f(o))) }
+    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] = for {
+      e <- exists(key)
+      _ <- RIO.when(e, RIO.fail(s"Can not overwrite key ${key}"))
+      _ <- hdfs(keyToHdfsPath(key).writeWith(o => Hdfs.fromRIO(f(o))))
+    } yield ()
   }
 
   def hdfs[A](thunk: => Hdfs[A]): RIO[A] =
     thunk.run(conf)
 
-  /* WARNING: This is a lossy operation, empty components will be dropped */
-  private def keyToHdfsPath(key: Key): HdfsPath =
-    root / HdfsPath.fromString(key.name).path
-
-  /* WARNING: This is a lossy operation */
-  private def hdfsPathToKey(p: HdfsPath): Key =
-    Key(p.path.names.map(KeyName.fromComponent).toVector)
+  def keyToHdfsPath(key: Key): HdfsPath =
+    HdfsPath(Path.fromList(root.path, key.components.toList))
 }

@@ -6,6 +6,7 @@ import com.ambiata.saws.s3._
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.data._
+import com.ambiata.mundane.path._
 import java.util.UUID
 import java.io.{InputStream, OutputStream}
 import java.io.{PipedInputStream, PipedOutputStream}
@@ -15,9 +16,9 @@ import scodec.bits.ByteVector
 
 case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnlyStore[RIO] {
   def list(prefix: Key): RIO[List[Key]] =
-    run { (s3 / prefix.name).listAddress.map(_.map( p => {
-      new Key(p.removeCommonPrefix(s3).cata(_.split(S3Operations.DELIMITER).toList, Nil).map(KeyName.unsafe).toVector)
-    }))}
+    run { (s3 / prefix.name).listAddress.map(_.flatMap(p =>
+      p.removeCommonPrefix(s3).flatMap(_.split(S3Operations.DELIMITER).toList.traverse(Component.create))).map(c => new Key(c.toVector)))
+    }
 
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     list(prefix).map(_.filter(predicate))
@@ -99,7 +100,7 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
     readOnly.checksum(key, algorithm)
 
   def delete(key: Key): RIO[Unit] =
-    run { (s3 | key.name).delete }
+    run { (s3 | key.name).toS3Pattern.determineAddress.flatMap(_.delete) }
 
   def deleteAll(prefix: Key): RIO[Unit] =
     list(prefix).flatMap(_.traverseU(delete)).void
@@ -110,8 +111,15 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
   def moveTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     copyTo(store, src, dest) >> delete(src)
 
-  def copy(in: Key, out: Key): RIO[Unit] =
-    run { (s3 | in.name).copy(s3 | out.name).void }
+  def copy(in: Key, out: Key): RIO[Unit] = {
+    val inAddr = s3 | in.name
+    val outAddr = s3 | out.name
+    run(for {
+      e <- outAddr.exists
+      _ <- S3Action.when(e, S3Action.fail(s"Can not copy to $out as it already exists!"))
+      _ <- inAddr.copy(outAddr)
+    } yield ())
+  }
 
   def mirror(in: Key, out: Key): RIO[Unit] = for {
     paths <- list(in)
@@ -168,8 +176,11 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
       readOnly.unsafe.withInputStream(key)(f)
 
-    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      S3OutputStream.stream((s3 / key.name).toS3Pattern, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
+    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] = for {
+      e <- exists(key)
+      _ <- RIO.when(e, RIO.fail(s"Can not overwrite key ${key}"))
+      _ <- S3OutputStream.stream((s3 / key.name).toS3Pattern, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
+    } yield ()
   }
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
