@@ -57,17 +57,6 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
       , d => Hdfs.fail(s"Can not copy key, not an object. ${d}").void)
     }
 
-  /* TODO Check current logic:
-   *      - store contains key a/b/c
-   *      - in = a/b, out = d
-   *      - the key d/a/b/c will be created
-   *      - is this correct? or should the new key be d/c?
-   */
-  def mirror(in: Key, out: Key): RIO[Unit] = for {
-    keys <- list(in)
-    _    <- keys.traverseU(source => copy(source, out / source))
-  } yield ()
-
   def moveTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     copyTo(store, src, dest) >> delete(src)
 
@@ -75,11 +64,6 @@ case class HdfsStore(conf: Configuration, root: HdfsPath) extends Store[RIO] wit
     unsafe.withInputStream(src) { in =>
       store.unsafe.withOutputStream(dest) { out =>
         Streams.pipe(in, out) }}
-
-  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] = for {
-    keys <- list(in)
-    _    <- keys.traverseU(source => copyTo(store, source, out / source))
-  } yield ()
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
     hdfs {

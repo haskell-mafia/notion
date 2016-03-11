@@ -24,8 +24,6 @@ trait WriteOnlyStore[F[_]] {
   def moveTo(store: Store[F], in: Key, out: Key): F[Unit]
 
   def copy(in: Key, out: Key): F[Unit]
-  def mirror(out: Key): F[Unit] = mirror(Key.Root, out)
-  def mirror(in: Key, out: Key): F[Unit]
 
   val bytes: StoreBytesWrite[F]
   val strings: StoreStringsWrite[F]
@@ -48,10 +46,6 @@ trait ReadOnlyStore[F[_]] {
   def exists(key: Key): F[Boolean]
 
   def copyTo(store: Store[F], in: Key, out: Key): F[Unit]
-
-  def mirrorTo(store: Store[F]): F[Unit] = mirrorTo(store, Key.Root)
-  def mirrorTo(store: Store[F], out: Key): F[Unit] = mirrorTo(store, Key.Root, out)
-  def mirrorTo(store: Store[F], in: Key, out: Key): F[Unit]
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): F[Checksum]
 

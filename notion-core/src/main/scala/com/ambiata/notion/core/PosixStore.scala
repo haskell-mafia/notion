@@ -47,11 +47,6 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
       f => f.copy(keyToLocalPath(out)).void
     , d => RIO.failIO(s"Can not copy key, not an object. LocalDirectory(${d.path})").void)
 
-  def mirror(in: Key, out: Key): RIO[Unit] = for {
-    keys <- list(in)
-    _    <- keys.traverseU { source => copy(source, out / source) }
-  } yield ()
-
   def moveTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     copyTo(store, src, dest) >> delete(src)
 
@@ -59,11 +54,6 @@ case class PosixStore(root: LocalPath) extends Store[RIO] with ReadOnlyStore[RIO
     unsafe.withInputStream(src) { in =>
       store.unsafe.withOutputStream(dest) { out =>
         Streams.pipe(in, out) }}
-
-  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] = for {
-    paths <- list(in)
-    _     <- paths.traverseU { source => copyTo(store, source, out / source) }
-  } yield ()
 
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] = {
     val p = keyToLocalPath(key)

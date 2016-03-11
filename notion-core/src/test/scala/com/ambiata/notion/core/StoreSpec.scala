@@ -347,30 +347,6 @@ class StoreSpec extends Specification with ScalaCheck { def is = s2"""
           _ <- f.copyTo(t, m, n)
         } yield ()) must beFail) }
 
-  Store can mirror all keys under a prefix to another prefix
-
-    Within the same store
-
-     ${ propNoShrink((keys: KeyFamily, value: S, st: StoreTemporary) => for {
-          s <- st.store
-          _ <- writeKeys(keys.keys.map(Key("sub")./), value.value, s)
-          _ <- s.mirror(Key("sub"), Key("mirror"))
-          l <- s.list(Key.Root)
-        } yield l.sorted ==== (keys.keys.map(Key("sub")./) ++ keys.keys.map(Key("mirror")./)).sorted) }
-
-    To a different store
-    
-     ${ propNoShrink((keys: KeyFamily, value: S, st: StoreTemporary, alt: StoreTemporary) => for {
-          f  <- st.store
-          t  <- alt.store
-          _  <- writeKeys(keys.keys.map(Key("sub")./), value.value, f)
-          _  <- f.mirrorTo(t, Key("sub"), Key("mirror"))
-          fl <- f.list(Key.Root)
-          tl <- t.list(Key.Root)
-        } yield fl.sorted ==== keys.keys.map(Key("sub")./).sorted && tl.sorted ==== keys.keys.map(Key("mirrot")./).sorted) }
-
-    Fails when the destination
-
   Store should be able to compute a checksum on keys in a store
 
     Checksum on an individual key works

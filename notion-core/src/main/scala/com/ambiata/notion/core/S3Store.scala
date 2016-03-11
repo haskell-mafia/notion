@@ -37,11 +37,6 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
       store.unsafe.withOutputStream(dest) { out =>
         Streams.pipe(in, out) }}
 
-  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] = for {
-    paths <- list(in)
-    _     <- paths.traverseU { source => copyTo(store, source, out / source) }
-  } yield ()
-
   val bytes: StoreBytesRead[RIO] = new StoreBytesRead[RIO] {
     def read(key: Key): RIO[ByteVector] =
       run { (s3 | key.name).getBytes.map(ByteVector.apply) }
@@ -121,16 +116,8 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
     } yield ())
   }
 
-  def mirror(in: Key, out: Key): RIO[Unit] = for {
-    paths <- list(in)
-    _     <- paths.traverseU { source => copy(source, out / source) }
-  } yield ()
-
   def copyTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     readOnly.copyTo(store, src, dest)
-
-  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] =
-    readOnly.mirrorTo(store, in, out)
 
   val bytes: StoreBytes[RIO] = new StoreBytes[RIO] {
     def read(key: Key): RIO[ByteVector] =
