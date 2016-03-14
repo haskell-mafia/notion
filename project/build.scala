@@ -11,8 +11,7 @@ object build extends Build {
     id = "notion"
   , base = file(".")
   , settings =
-    standardSettings ++
-    promulgate.library("com.ambiata.notion", "ambiata-oss-v2")
+    standardSettings ++ lib("com.ambiata.notion")
   , aggregate =
       Seq(core, distcopy)
   )
@@ -103,12 +102,11 @@ object build extends Build {
   , scalacOptions in (Test,console) := Seq("-language:_", "-feature")
   )
 
+  lazy val ossBucket: String =
+    sys.env.getOrElse("AMBIATA_IVY_OSS", "ambiata-oss")
+
   def lib(name: String) =
-    promulgate.library(s"com.ambiata.notion.$name", "ambiata-oss")
-
-  def app(name: String) =
-    promulgate.all(s"com.ambiata.notion.$name", "ambiata-oss", "ambiata-dist")
-
+    promulgate.library(s"com.ambiata.notion.$name", ossBucket)
 
   lazy val testingSettings: Seq[Settings] = Seq(
     initialCommands in console := "import org.specs2._"
