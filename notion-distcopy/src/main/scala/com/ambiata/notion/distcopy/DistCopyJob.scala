@@ -7,7 +7,7 @@ import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.com.amazonaws.services.s3.transfer.{TransferManagerConfiguration, TransferManager}
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
-import com.ambiata.poacher.hdfs.Hdfs
+import com.ambiata.poacher.hdfs.HdfsPath
 import com.ambiata.poacher.mr._
 import com.ambiata.saws.core._
 import com.ambiata.saws.s3.{S3, S3Address}
@@ -58,7 +58,7 @@ object DistCopyJob {
         job.setMapperClass(classOf[DistCopyMapper])
         job.setMapOutputKeyClass(classOf[NullWritable])
         job.setMapOutputValueClass(classOf[NullWritable])
-        val tmpout = new Path(ctx.output, "distcopy")
+        val tmpout = new Path(ctx.output.toHPath, "distcopy")
         job.setOutputFormatClass(classOf[TextOutputFormat[_, _]])
         FileOutputFormat.setOutputPath(job, tmpout)
       })
@@ -147,8 +147,8 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           )
         }.retry(retryCount, retryHandler)
         _               = println(s"Moving: $tmpDestination ===> $destination")
-        _               <- S3Action.fromRIO(Hdfs.mkdir(destination.getParent).run(context.getConfiguration))
-        _               <- S3Action.fromRIO(Hdfs.mv(tmpDestination, destination).run(context.getConfiguration))
+        destPath        = HdfsPath.fromPath(destination)
+        _               <- S3Action.fromRIO((destPath.dirname.mkdirs >> HdfsPath.fromPath(tmpDestination).move(destPath)).run(context.getConfiguration))
         _               = totalFilesDownloaded.increment(1)
       } yield ()
 
@@ -212,7 +212,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
 
   def validateDownload(to: Path, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
     // Check no file in target location
-    S3Action.fromRIO(Hdfs.exists(to).run(conf).flatMap(
+    S3Action.fromRIO(HdfsPath.fromPath(to).exists.run(conf).flatMap(
       RIO.when(_,
         RIO.failIO[Unit](s"notion dist-copy download failed - target file exists. ( ${to.toString} )")
       )))

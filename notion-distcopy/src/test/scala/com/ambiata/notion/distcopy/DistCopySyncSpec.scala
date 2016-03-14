@@ -32,11 +32,11 @@ Syncing files between S3 and HDFS
     x <- hdfs.path.run(c)
     y <- hdfs.path.run(c)
     _ <- a.put(data.value).execute(s3Client)
-    _ <- Hdfs.write(x, data.value).run(c)
-    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(x, b), DownloadMapping(a, y))),
+    _ <- x.write(data.value).run(c)
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(x.toHPath, b), DownloadMapping(a, y.toHPath))),
            DistCopyConfiguration(c, s3Client, DistCopyParameters.createDefault(mappersNumber = 1)))
     i <- b.get.execute(s3Client)
-    o <- Hdfs.readContentAsString(y).run(c)
-  } yield i -> o ==== data.value -> data.value)
+    o <- y.read.run(c)
+  } yield i -> o ==== data.value -> Some(data.value))
 
 }

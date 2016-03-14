@@ -1,9 +1,15 @@
 package com.ambiata.notion.core
 
+import com.ambiata.mundane.io._
+import com.ambiata.mundane.path._
+import com.ambiata.mundane.path.Arbitraries._
+import com.ambiata.mundane.testing._
 import com.ambiata.notion.core.TemporaryType._
+import com.ambiata.poacher.hdfs.HdfsPath
 import com.ambiata.saws.s3.S3Pattern
-import org.scalacheck._, Arbitrary._
 import com.ambiata.saws.testing.Arbitraries._
+
+import org.scalacheck._, Arbitrary._
 
 object Arbitraries {
   // This is a little dodgy, but means that property tests can be run on Travis without having AWS access
@@ -16,6 +22,13 @@ object Arbitraries {
     Arbitrary(if (awsEnabled) Gen.oneOf(Posix, S3, Hdfs) else Gen.oneOf(Posix, Hdfs))
   }
 
+  implicit def KeyArbitrary: Arbitrary[Key] =
+    Arbitrary(arbitrary[KeyEntry].map(e => Key.unsafe(e.full)))
+
+  case class KeyFamily(keys: List[Key])
+  implicit def KeyFamilyArbitrary: Arbitrary[KeyFamily] =
+    Arbitrary(arbitrary[Keys].map(ks => KeyFamily(ks.keys.map(e => Key.unsafe(e.full)))))
+
   implicit def LocationArbitrary: Arbitrary[Location] = Arbitrary {
     Gen.frequency((1, arbitrary[HdfsLocation]: Gen[Location]),
       (1, arbitrary[LocalLocation]),
@@ -23,33 +36,13 @@ object Arbitraries {
   }
 
   implicit def LocalLocationArbitrary: Arbitrary[LocalLocation] =
-    Arbitrary {
-      for {
-        relative <- arbitrary[Boolean]
-        p        <- genPath
-      } yield if (relative) LocalLocation(p) else LocalLocation("/"+p)
-    }
+    Arbitrary(arbitrary[Path].map(p => LocalLocation(LocalPath(p))))
 
   implicit def HdfsLocationArbitrary: Arbitrary[HdfsLocation] =
-    Arbitrary(genPath.map(p => HdfsLocation("/"+p)))
+    Arbitrary(arbitrary[Path].map(p => HdfsLocation(HdfsPath(p))))
 
   implicit def S3LocationArbitrary: Arbitrary[S3Location] =
-    Arbitrary(S3PatternArbitrary.arbitrary.map { case S3Pattern(b, k) => S3Location(b, k) })
-
-
-  implicit def ArbitraryExecutionLocation: Arbitrary[ExecutionLocation] =
-    Arbitrary {
-      Gen.oneOf(arbitrary[HdfsLocation].map(hdfs => ExecutionLocation.HdfsExecutionLocation(hdfs.path)),
-        arbitrary[LocalLocation].map(local => ExecutionLocation.LocalExecutionLocation(local.path)))
-    }
-
-  case class ExecutionPath(path: String) {
-    def onHdfs = "hdfs:///"+path
-    def onLocal = "file:///"+path
-  }
-
-  implicit def ArbitraryExecutionPath: Arbitrary[ExecutionPath] =
-    Arbitrary(genPath.map(ExecutionPath))
+    Arbitrary(S3PatternArbitrary.arbitrary.map(S3Location.apply))
 
   def genPath: Gen[String] =
     Gen.nonEmptyListOf(Gen.identifier).map(_.mkString("/"))

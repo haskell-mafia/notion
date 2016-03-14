@@ -14,9 +14,9 @@ import org.scalacheck._, Arbitrary._
 
 import scalaz.{Store => _}
 
-case class StoreTemporary(t: T, path: String, client: AmazonS3Client, conf: Configuration) {
+case class StoreTemporary(t: T, seed: String, client: AmazonS3Client, conf: Configuration) {
   override def toString: String =
-    s"StoreTemporary($t, $path)"
+    s"StoreTemporary($t, $seed, AmazonS3Client(...), Configuration(...))"
 
   def store: RIO[Store[RIO]] = t match {
     case (T.Posix) =>
@@ -29,17 +29,16 @@ case class StoreTemporary(t: T, path: String, client: AmazonS3Client, conf: Conf
 
   def hdfsStore: RIO[Store[RIO]] = for {
     c <- ConfigurationTemporary.random.conf
-    r <- HdfsTemporary(path).path.map(p =>
-        HdfsStore(c, DirPath.unsafe(p.toString))).run(c)
+    r <- HdfsTemporary(HdfsTemporary.hdfsTemporaryPath, seed).path.map(p =>
+        HdfsStore(c, p)).run(c)
   } yield r
 
   def s3Store: RIO[Store[RIO]] =
-    S3Temporary(path).prefix.map(p =>
+    S3Temporary(seed).prefix.map(p =>
       S3Store(p, client)).run(client).map(_._2)
 
   def posixStore: RIO[Store[RIO]] =
-    LocalTemporary(path).directory.map(d =>
-      PosixStore(d))
+    LocalTemporary(Temporary.uniqueLocalPath, seed).path.map(PosixStore.apply)
 }
 
 object StoreTemporary {

@@ -13,7 +13,11 @@ object depend {
                       "org.specs2"           %% "specs2-matcher-extra",
                       "org.specs2"           %% "specs2-scalacheck").map(_ % "2.4.5" % "test")
 
-  val sawsVersion = "1.2.1-20151013033431-9d0854f"
+  val bits      = Seq("org.typelevel"        %% "scodec-bits"     % "1.0.0")
+
+  val stream    = Seq("org.scalaz.stream"    %% "scalaz-stream"   % "0.5a")
+
+  val sawsVersion = "1.2.1-20160219002754-0e310fb"
   val saws      = Seq(
     "com.ambiata"          %% "saws-s3",
     "com.ambiata"          %% "saws-cw").map(_ % sawsVersion excludeAll(
@@ -22,10 +26,11 @@ object depend {
     ExclusionRule(organization = "com.owtelse.codec"))) ++
     Seq("com.ambiata"          %% "saws-testing"       % sawsVersion % "test->test")
 
-  val mundaneVersion = "1.2.1-20150323032355-3271ed9"
-  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-bytes").map(c =>
+  val mundaneVersion = "1.2.1-20160108044905-83acfd2"
+  val mundane   = Seq("mundane-io", "mundane-control", "mundane-parse", "mundane-bytes", "mundane-path").map(c =>
                       "com.ambiata"          %% c                 % mundaneVersion) ++
-                  Seq("com.ambiata"          %% "mundane-io"      % mundaneVersion % "test->test") ++
+                  Seq("mundane-io", "mundane-path").map(c =>
+                      "com.ambiata"          %% c                 % mundaneVersion % "test->test") ++
                   Seq("com.ambiata"          %% "mundane-testing" % mundaneVersion % "test")
 
   val disorder =  Seq("com.ambiata"          %% "disorder"        % "0.0.1-20150317050225-9c1f81e" % "test")
@@ -34,7 +39,7 @@ object depend {
     if (version.contains("mr1"))
       Seq("com.ambiata" %% "poacher" % "1.0.0-mr1-20151013034225-ec555dc" % "compile->compile;test->test") ++ hadoop(version)
     else if (version.contains("yarn"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-yarn-20151013034230-ec555dc" % "compile->compile;test->test") ++ hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-yarn-20160222041120-06eddb8" % "compile->compile;test->test") ++ hadoop(version)
     else
       sys.error(s"unsupported poacher version, can not build for $version")
 
@@ -59,6 +64,7 @@ object depend {
   , "cloudera" at "https://repository.cloudera.com/content/repositories/releases"
   , "cloudera2" at "https://repository.cloudera.com/artifactory/public"
   , Resolver.url("ambiata-oss", new URL("https://ambiata-oss.s3.amazonaws.com"))(Resolver.ivyStylePatterns)
+  , Resolver.url("ambiata-oss-v2", new URL("https://ambiata-oss-v2.s3.amazonaws.com"))(Resolver.ivyStylePatterns)
   , "bintray/scalaz"  at "http://dl.bintray.com/scalaz/releases"
   , "bintray/non"     at "http://dl.bintray.com/non/maven"
   , "spray.io"        at "http://repo.spray.io"

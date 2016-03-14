@@ -2,6 +2,7 @@ package com.ambiata.notion.distcopy
 
 import com.ambiata.disorder._
 import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
+import com.ambiata.mundane.path._
 import com.ambiata.mundane.testing.RIOMatcher._
 import com.ambiata.poacher.hdfs._
 import com.ambiata.poacher.hdfs.Arbitraries._
@@ -44,10 +45,9 @@ Download files from S3 to HDFS
     a <- s3.address.execute(s3Client)
     p <- hdfs.path.run(c)
     _ <- a.put(data).execute(s3Client)
-    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p))), distCopyConf(c, s3Client))
-    e <- Hdfs.exists(p).run(c)
-    s <- Hdfs.readContentAsString(p).run(c)
-  } yield e -> s ==== true -> data)
+    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p.toHPath))), distCopyConf(c, s3Client))
+    s <- p.read.run(c)
+  } yield s must beSome(data))
 
   def downloadFiles = prop((s3: S3Temporary, hdfs: HdfsTemporary, data: String) => for {
     c <- ConfigurationTemporary.random.conf
@@ -56,10 +56,10 @@ Download files from S3 to HDFS
     p <- hdfs.path.run(c)
     o <- hdfs.path.run(c)
     _ <- List(a, b).traverse(_.put(data).execute(s3Client))
-    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p), DownloadMapping(b, o))), distCopyConf(c, s3Client))
-    r <- Hdfs.readContentAsString(p).run(c)
-    z <- Hdfs.readContentAsString(o).run(c)
-  } yield r -> z ==== data -> data)
+    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p.toHPath), DownloadMapping(b, o.toHPath))), distCopyConf(c, s3Client))
+    r <- p.read.run(c)
+    z <- o.read.run(c)
+  } yield r -> z ==== data.some -> data.some)
 
   def nestedFiles = prop((s3: S3Temporary, hdfs: HdfsTemporary, d: DistinctPair[Ident], data: String) => for {
     c <- ConfigurationTemporary.random.conf
@@ -67,27 +67,27 @@ Download files from S3 to HDFS
     h <- hdfs.path.run(c)
     o = p | d.first.value
     t = p / d.second.value | d.first.value
-    x = new Path(h, d.first.value)
-    y = new Path(new Path(h, d.second.value), d.first.value)
+    x = h | Component.unsafe(d.first.value)
+    y = h | Component.unsafe(d.second.value) | Component.unsafe(d.first.value)
     _ <- List(o, t).traverse(_.put(data).execute(s3Client))
-    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(o, x), DownloadMapping(t, y))), distCopyConf(c, s3Client))
-    r <- Hdfs.readContentAsString(x).run(c)
-    z <- Hdfs.readContentAsString(y).run(c)
-  } yield r -> z ==== data -> data)
+    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(o, x.toHPath), DownloadMapping(t, y.toHPath))), distCopyConf(c, s3Client))
+    r <- x.read.run(c)
+    z <- y.read.run(c)
+  } yield r -> z ==== data.some -> data.some)
 
   def noSourceFile = prop((s3: S3Temporary, hdfs: HdfsTemporary) => (for {
     c <- ConfigurationTemporary.random.conf
     a <- s3.address.execute(s3Client)
     p <- hdfs.path.run(c)
-    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p))), distCopyConf(c, s3Client))
+    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p.toHPath))), distCopyConf(c, s3Client))
   } yield ()) must beFail)
 
-  def targetExists = prop((s3: S3Temporary, hdfs: HdfsTemporary, data: String) => (for {
+  def targetExists = prop((s3: S3Temporary, hdfs: HdfsTemporary, data: S) => (for {
     c <- ConfigurationTemporary.random.conf
     a <- s3.address.execute(s3Client)
     p <- hdfs.path.run(c)
-    _ <- a.put(data).execute(s3Client)
-    _ <- Hdfs.write(p, data).run(c)
-    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p))), distCopyConf(c, s3Client))
+    _ <- a.put(data.value).execute(s3Client)
+    _ <- p.write(data.value).run(c)
+    _ <- DistCopyJob.run(Mappings(Vector(DownloadMapping(a, p.toHPath))), distCopyConf(c, s3Client))
   } yield ()) must beFail)
 }

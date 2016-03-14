@@ -6,21 +6,19 @@ import com.ambiata.saws.s3._
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
 import com.ambiata.mundane.data._
+import com.ambiata.mundane.path._
 import java.util.UUID
 import java.io.{InputStream, OutputStream}
 import java.io.{PipedInputStream, PipedOutputStream}
 import scala.io.Codec
-import scalaz.{Store => _, _}, Scalaz._, scalaz.stream._, scalaz.concurrent._, effect.IO, effect.Effect._
+import scalaz.{Store => _, _}, Scalaz._, effect.IO, effect.Effect._
 import scodec.bits.ByteVector
 
 case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnlyStore[RIO] {
   def list(prefix: Key): RIO[List[Key]] =
-    run { (s3 / prefix.name).listAddress.map(_.map( p => {
-      new Key(p.removeCommonPrefix(s3).cata(_.split(S3Operations.DELIMITER).toList, Nil).map(KeyName.unsafe).toVector)
-    }))}
-
-  def listHeads(prefix: Key): RIO[List[Key]] =
-    run { (s3 / prefix.name).listKeysHead.map(_.map(Key.unsafe)) }
+    run { (s3 / prefix.name).listAddress.map(_.flatMap(p =>
+      p.removeCommonPrefix(s3).flatMap(_.split(S3Operations.DELIMITER).toList.traverse(Component.create))).map(c => new Key(c.toVector)))
+    }
 
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     list(prefix).map(_.filter(predicate))
@@ -31,9 +29,6 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
   def exists(key: Key): RIO[Boolean] =
     run { (s3 | key.name).exists }
 
-  def existsPrefix(prefix: Key): RIO[Boolean] =
-    run { (s3 / prefix.name).exists }
-
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
     run { (s3 | key.name).withStream(in => Checksum.stream(in, algorithm)) }
 
@@ -42,17 +37,9 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
       store.unsafe.withOutputStream(dest) { out =>
         Streams.pipe(in, out) }}
 
-  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] = for {
-    paths <- list(in)
-    _     <- paths.traverseU { source => copyTo(store, source, out / source) }
-  } yield ()
-
   val bytes: StoreBytesRead[RIO] = new StoreBytesRead[RIO] {
     def read(key: Key): RIO[ByteVector] =
       run { (s3 | key.name).getBytes.map(ByteVector.apply) }
-
-    def source(key: Key): Process[Task, ByteVector] =
-      scalaz.stream.io.chunkR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent).evalMap(_(1024 * 1024))
   }
 
   val strings: StoreStringsRead[RIO] = new StoreStringsRead[RIO] {
@@ -63,25 +50,16 @@ case class S3ReadOnlyStore(s3: S3Prefix, client: AmazonS3Client) extends ReadOnl
   val utf8: StoreUtf8Read[RIO] = new StoreUtf8Read[RIO] {
     def read(key: Key): RIO[String] =
       strings.read(key, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      bytes.source(key) |> scalaz.stream.text.utf8Decode
   }
 
   val lines: StoreLinesRead[RIO] = new StoreLinesRead[RIO] {
     def read(key: Key, codec: Codec): RIO[List[String]] =
       strings.read(key, codec).map(_.lines.toList)
-
-    def source(key: Key, codec: Codec): Process[Task, String] =
-      scalaz.stream.io.linesR(client.getObject(s3.bucket, (s3 | key.name).key).getObjectContent)(codec)
   }
 
   val linesUtf8: StoreLinesUtf8Read[RIO] = new StoreLinesUtf8Read[RIO] {
     def read(key: Key): RIO[List[String]] =
       lines.read(key, Codec.UTF8)
-
-    def source(key: Key): Process[Task, String] =
-      lines.source(key, Codec.UTF8)
   }
 
   val unsafe: StoreUnsafeRead[RIO] = new StoreUnsafeRead[RIO] {
@@ -104,9 +82,6 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
   def list(prefix: Key): RIO[List[Key]] =
     readOnly.list(prefix)
 
-  def listHeads(prefix: Key): RIO[List[Key]] =
-    readOnly.listHeads(prefix)
-
   def filter(prefix: Key, predicate: Key => Boolean): RIO[List[Key]] =
     readOnly.filter(prefix, predicate)
 
@@ -116,14 +91,11 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
   def exists(key: Key): RIO[Boolean] =
     readOnly.exists(key)
 
-  def existsPrefix(key: Key): RIO[Boolean] =
-    readOnly.existsPrefix(key)
-
   def checksum(key: Key, algorithm: ChecksumAlgorithm): RIO[Checksum] =
     readOnly.checksum(key, algorithm)
 
   def delete(key: Key): RIO[Unit] =
-    run { (s3 | key.name).delete }
+    run { (s3 | key.name).toS3Pattern.determineAddress.flatMap(_.delete) }
 
   def deleteAll(prefix: Key): RIO[Unit] =
     list(prefix).flatMap(_.traverseU(delete)).void
@@ -134,34 +106,25 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
   def moveTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     copyTo(store, src, dest) >> delete(src)
 
-  def copy(in: Key, out: Key): RIO[Unit] =
-    run { (s3 | in.name).copy(s3 | out.name).void }
-
-  def mirror(in: Key, out: Key): RIO[Unit] = for {
-    paths <- list(in)
-    _     <- paths.traverseU { source => copy(source, out / source) }
-  } yield ()
+  def copy(in: Key, out: Key): RIO[Unit] = {
+    val inAddr = s3 | in.name
+    val outAddr = s3 | out.name
+    run(for {
+      e <- outAddr.exists
+      _ <- S3Action.when(e, S3Action.fail(s"Can not copy to $out as it already exists!"))
+      _ <- inAddr.copy(outAddr)
+    } yield ())
+  }
 
   def copyTo(store: Store[RIO], src: Key, dest: Key): RIO[Unit] =
     readOnly.copyTo(store, src, dest)
-
-  def mirrorTo(store: Store[RIO], in: Key, out: Key): RIO[Unit] =
-    readOnly.mirrorTo(store, in, out)
 
   val bytes: StoreBytes[RIO] = new StoreBytes[RIO] {
     def read(key: Key): RIO[ByteVector] =
       readOnly.bytes.read(key)
 
-    def source(key: Key): Process[Task, ByteVector] =
-      readOnly.bytes.source(key)
-
     def write(key: Key, data: ByteVector): RIO[Unit] =
       run { (s3 | key.name).putBytes(data.toArray).void }
-
-    def sink(key: Key): Sink[Task, ByteVector] =
-      io.resource(Task.delay(new PipedOutputStream))(out => Task.delay(out.close))(
-        out => io.resource(Task.delay(new PipedInputStream))(in => Task.delay(in.close))(
-          in => Task.now((bytes: ByteVector) => Task.delay(out.write(bytes.toArray)))).toTask)
   }
 
   val strings: StoreStrings[RIO] = new StoreStrings[RIO] {
@@ -176,57 +139,39 @@ case class S3Store(s3: S3Prefix, client: AmazonS3Client) extends Store[RIO] with
     def read(key: Key): RIO[String] =
       readOnly.utf8.read(key)
 
-    def source(key: Key): Process[Task, String] =
-      readOnly.utf8.source(key)
-
     def write(key: Key, data: String): RIO[Unit] =
       strings.write(key, data, Codec.UTF8)
-
-    def sink(key: Key): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s.getBytes("UTF-8"))))
   }
 
   val lines: StoreLines[RIO] = new StoreLines[RIO] {
     def read(key: Key, codec: Codec): RIO[List[String]] =
       readOnly.lines.read(key, codec)
 
-    def source(key: Key, codec: Codec): Process[Task, String] =
-      readOnly.lines.source(key, codec)
-
     def write(key: Key, data: List[String], codec: Codec): RIO[Unit] =
       strings.write(key, Lists.prepareForFile(data), codec)
-
-    def sink(key: Key, codec: Codec): Sink[Task, String] =
-      bytes.sink(key).map(_.contramap(s => ByteVector.view(s"$s\n".getBytes(codec.name))))
   }
 
   val linesUtf8: StoreLinesUtf8[RIO] = new StoreLinesUtf8[RIO] {
     def read(key: Key): RIO[List[String]] =
       readOnly.linesUtf8.read(key)
 
-    def source(key: Key): Process[Task, String] =
-      readOnly.linesUtf8.source(key)
-
     def write(key: Key, data: List[String]): RIO[Unit] =
       lines.write(key, data, Codec.UTF8)
-
-    def sink(key: Key): Sink[Task, String] =
-      lines.sink(key, Codec.UTF8)
   }
 
   val unsafe: StoreUnsafe[RIO] = new StoreUnsafe[RIO] {
     def withInputStream(key: Key)(f: InputStream => RIO[Unit]): RIO[Unit] =
       readOnly.unsafe.withInputStream(key)(f)
 
-    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] =
-      S3OutputStream.stream(s3 | key.name, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
+    def withOutputStream(key: Key)(f: OutputStream => RIO[Unit]): RIO[Unit] = for {
+      e <- exists(key)
+      _ <- RIO.when(e, RIO.fail(s"Can not overwrite key ${key}"))
+      _ <- S3OutputStream.stream((s3 / key.name).toS3Pattern, client) >>= (o => RIO.using(o.pure[RIO])(oo => f(oo)))
+    } yield ()
   }
 
   def run[A](thunk: => S3Action[A]): RIO[A] =
     thunk.execute(client)
-
-  private def keyToFilePath(key: Key): FilePath =
-    FilePath.unsafe(key.name)
 }
 
 object S3Store {
