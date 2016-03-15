@@ -72,6 +72,14 @@ object LocationIO {
       case NoneIOContext            => fail(InvalidContext(ioc, "hdfs"))
     })
 
+  def withS3Client: LocationIO[AmazonS3Client] =
+    ioContext.flatMap(ioc => ioc match {
+      case HdfsIOContext(_)           => fail(InvalidContext(ioc, "s3"))
+      case HdfsS3IOContext(_, client) => ok(client)
+      case S3IOContext(client)        => ok(client)
+      case NoneIOContext              => fail(InvalidContext(ioc, "s3"))
+    })
+
   /* the (recursive) list of all the locations contained in `location` */
   def list(location: Location): LocationIO[List[Location]] =
     withLocationContext(location) {
