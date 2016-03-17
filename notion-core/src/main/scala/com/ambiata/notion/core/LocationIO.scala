@@ -267,6 +267,16 @@ object LocationIO {
       case S3LocationContext(client, p) => fromS3(client, p.determineAddress.flatMap(_.delete))
     }
 
+  def size(location: Location): LocationIO[BytesQuantity] =
+    withLocationContext(location) {
+      case LocalLocationContext(p)      => fromRIO(p.size)
+      case HdfsLocationContext(conf, p) => fromHdfs(conf, p.sizeOrFail)
+      case S3LocationContext(client, p) => fromS3(client, for {
+        s <- p.size
+        b <- s.cata(l => S3Action.ok(Bytes(l)), S3Action.fail(s"Location does not exist! ${location}"))
+      } yield b)
+    }
+
   /**
    * copy a file by simply piping lines from one location to the other
    *
