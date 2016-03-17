@@ -391,6 +391,35 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
         } yield ()) must beRIOFail(loc.context))
       }
 
+  LocationIO can get the size of a location
+
+    Size of a file/object
+
+     ${ prop((loc: LocationTemporary, data: Array[Byte]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeBytes(p, data)
+          s <- LocationIO.size(p)
+        } yield s) must beOkValue(loc.contextAll)(Bytes(data.length.toLong)))
+      }
+
+    Size of a dir/prefix
+
+     ${ prop((loc: LocationTemporary, dp: DistinctPair[Component], data1: Array[Byte], data2: Array[Byte]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeBytes(p | dp.first, data1)
+          _ <- LocationIO.writeBytes(p | dp.second, data2)
+          s <- LocationIO.size(p)
+        } yield s) must beOkValue(loc.contextAll)(Bytes(data1.length.toLong + data2.length.toLong)))
+      }
+
+    Size fails if the location doesn't exist
+
+     ${ prop((loc: LocationTemporary) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          s <- LocationIO.size(p)
+        } yield s) must beRIOFail(loc.contextAll))
+      }
+
   LocationIO can copy a file/object from one location to another
 
     Successful when destination does not exist and overwrite is set to false
@@ -438,7 +467,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
 """
   override implicit def defaultParameters: Parameters =
-    new Parameters(minTestsOk = 5, workers = 3, maxSize = 10)
+    new Parameters(minTestsOk = 10, workers = 3, maxSize = 10)
 
   implicit def LocationIOArbitrary[A : Arbitrary]: Arbitrary[LocationIO[A]] =
     Arbitrary(arbitrary[A].map(LocationIO.ok))
