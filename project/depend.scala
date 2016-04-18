@@ -39,7 +39,7 @@ object depend {
     if (version.contains("mr1"))
       Seq("com.ambiata" %% "poacher" % "1.0.0-mr1-20151013034225-ec555dc" % "compile->compile;test->test") ++ hadoop(version)
     else if (version.contains("yarn"))
-      Seq("com.ambiata" %% "poacher" % "1.0.0-yarn-20160222041120-06eddb8" % "compile->compile;test->test") ++ hadoop(version)
+      Seq("com.ambiata" %% "poacher" % "1.0.0-yarn-20160418021427-15dc70b" % "compile->compile;test->test") ++ hadoop(version)
     else
       sys.error(s"unsupported poacher version, can not build for $version")
 
