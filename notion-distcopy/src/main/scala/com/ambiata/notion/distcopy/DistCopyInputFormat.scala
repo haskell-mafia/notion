@@ -84,7 +84,7 @@ object DistCopyInputFormat {
 
   def size(z: (Mapping, Int), client: AmazonS3Client, conf: Configuration): RIO[Long] = z._1 match {
     case DownloadMapping(from, _) => from.size.execute(client)
-    case UploadMapping(from, _)   => HdfsPath.fromPath(from).sizeOrFail.run(conf).map(_.value)
+    case UploadMapping(from, _)   => from.sizeOrFail.run(conf).map(_.value)
   }
 
   def calc(mappings: Mappings, mappers: Int, client: AmazonS3Client, conf: Configuration): RIO[Workloads] = for {

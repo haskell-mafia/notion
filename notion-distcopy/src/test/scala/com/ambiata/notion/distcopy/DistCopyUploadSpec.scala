@@ -45,7 +45,7 @@ Upload files from HDFS to S3
     a <- s3.address.execute(s3Client)
     p <- hdfs.path.run(c)
     _ <- p.write(data.value).run(c)
-    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p.toHPath, a))), distCopyConf(c, s3Client))
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
     r <- a.get.execute(s3Client)
   } yield r ==== data.value)
 
@@ -56,7 +56,7 @@ Upload files from HDFS to S3
     x <- hdfs.path.run(c)
     y <- hdfs.path.run(c)
     _ <- List(x, y).traverse(_.write(data).run(c))
-    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(x.toHPath, a), UploadMapping(y.toHPath, b))), distCopyConf(c, s3Client))
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(x, a), UploadMapping(y, b))), distCopyConf(c, s3Client))
     r <- a.get.execute(s3Client)
     z <- b.get.execute(s3Client)
   } yield r -> z ==== data -> data)
@@ -65,7 +65,7 @@ Upload files from HDFS to S3
     c <- ConfigurationTemporary.random.conf
     a <- s3.address.execute(s3Client)
     p <- hdfs.path.run(c)
-    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p.toHPath, a))), distCopyConf(c, s3Client))
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
   } yield ()) must beFail)
 
   def targetExists = propNoShrink((s3: S3Temporary, hdfs: HdfsTemporary) => (for {
@@ -74,7 +74,7 @@ Upload files from HDFS to S3
     p <- hdfs.path.run(c)
     _ <- p.write("").run(c)
     _ <- a.put("").execute(s3Client)
-    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p.toHPath, a))), distCopyConf(c, s3Client))
+    _ <- DistCopyJob.run(Mappings(Vector(UploadMapping(p, a))), distCopyConf(c, s3Client))
   } yield ()) must beFail)
 
 }

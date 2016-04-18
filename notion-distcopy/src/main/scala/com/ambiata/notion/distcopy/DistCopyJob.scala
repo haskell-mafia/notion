@@ -147,8 +147,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           )
         }.retry(retryCount, retryHandler)
         _               = println(s"Moving: $tmpDestination ===> $destination")
-        destPath        = HdfsPath.fromPath(destination)
-        _               <- S3Action.fromRIO((destPath.dirname.mkdirs >> HdfsPath.fromPath(tmpDestination).move(destPath)).run(context.getConfiguration))
+        _               <- S3Action.fromRIO((destination.dirname.mkdirs >> HdfsPath.fromPath(tmpDestination).move(destination)).run(context.getConfiguration))
         _               = totalFilesDownloaded.increment(1)
       } yield ()
 
@@ -156,14 +155,14 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
         _        <- validateUpload(destination, client, context.getConfiguration)
         fs       = FileSystem.get(context.getConfiguration)
         length   <- S3Action.safe[Long]({
-          fs.getFileStatus(from).getLen
+          fs.getFileStatus(from.toHPath).getLen
         })
         metadata = S3.ServerSideEncryption
         _        = metadata.setContentLength(length)
         _        = println(s"Uploading: $from ===> ${destination.render}")
         _        = println(s"\tFile size: ${length / 1024 / 1024}mb")
         // Wrapping FSDataInputStream in BufferedInputStream to fix overflows on reset of the stream
-        _        <- (Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from)))) {
+        _        <- (Aws.using(S3Action.safe(new BufferedInputStream(fs.open(from.toHPath)))) {
           inputStream => {
             (if (length > partSize) {
               // This should really be handled by `saws`
@@ -210,9 +209,9 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     transferManager.shutdownNow()
   }
 
-  def validateDownload(to: Path, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
+  def validateDownload(to: HdfsPath, client: AmazonS3Client, conf: Configuration): S3Action[Unit] = {
     // Check no file in target location
-    S3Action.fromRIO(HdfsPath.fromPath(to).exists.run(conf).flatMap(
+    S3Action.fromRIO(to.exists.run(conf).flatMap(
       RIO.when(_,
         RIO.failIO[Unit](s"notion dist-copy download failed - target file exists. ( ${to.toString} )")
       )))

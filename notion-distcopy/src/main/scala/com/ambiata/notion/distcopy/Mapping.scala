@@ -1,18 +1,18 @@
 package com.ambiata.notion.distcopy
 
+import com.ambiata.poacher.hdfs.HdfsPath
 import com.ambiata.saws.s3.S3Address
-import org.apache.hadoop.fs.Path
 
 sealed trait Mapping {
   def render: String
 }
 
-case class DownloadMapping(from: S3Address, to: Path) extends Mapping {
+case class DownloadMapping(from: S3Address, to: HdfsPath) extends Mapping {
   def render: String =
-    s"$from,$to"
+    s"s3://${from.bucket}/${from.key},hdfs://${to.path.path}"
 }
 
-case class UploadMapping(from: Path, to: S3Address) extends Mapping {
+case class UploadMapping(from: HdfsPath, to: S3Address) extends Mapping {
   def render: String =
-    s"$from,$to"
+    s"hdfs://${from.path.path},s3://${to.bucket}/${to.key}"
 }

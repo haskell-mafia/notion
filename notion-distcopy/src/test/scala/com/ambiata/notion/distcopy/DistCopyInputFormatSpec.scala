@@ -33,9 +33,9 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
     _ <- c.write("c").run(q)
     r <- DistCopyInputFormat.calc(
       Mappings(Vector(
-          UploadMapping(a.toHPath, s)
-        , UploadMapping(b.toHPath, s)
-        , UploadMapping(c.toHPath, s)
+          UploadMapping(a, s)
+        , UploadMapping(b, s)
+        , UploadMapping(c, s)
       )), 2, s3Client, q)
   } yield r ==== Workloads(Vector(Workload(Vector(1)), Workload(Vector(0, 2)))))
 
@@ -50,9 +50,9 @@ class DistCopyInputFormatSpec extends Specification with ScalaCheck { def is = s
     _ <- c.put("c").execute(s3Client)
     r <- DistCopyInputFormat.calc(
       Mappings(Vector(
-          DownloadMapping(a, h.toHPath)
-        , DownloadMapping(b, h.toHPath)
-        , DownloadMapping(c, h.toHPath)
+          DownloadMapping(a, h)
+        , DownloadMapping(b, h)
+        , DownloadMapping(c, h)
       )), 2, s3Client, q)
   } yield r ==== Workloads(Vector(Workload(Vector(0)), Workload(Vector(1, 2)))))
 
