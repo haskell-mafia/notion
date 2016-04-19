@@ -1,8 +1,7 @@
 package com.ambiata.notion.distcopy
 
+import com.ambiata.poacher.hdfs._
 import com.ambiata.saws.s3._
-
-import org.apache.hadoop.fs.Path
 
 import scala.collection.JavaConverters._
 import scalaz.Monoid
@@ -11,9 +10,9 @@ case class Mappings(mappings: Vector[Mapping]) {
   def toThrift: MappingsLookup =
     new MappingsLookup(mappings.toList.map({
       case UploadMapping(f, t) =>
-        MappingLookup.upload(new UploadMappingLookup(f.toString, t.bucket, t.key))
+        MappingLookup.upload(new UploadMappingLookup(f.path.path, t.bucket, t.key))
       case DownloadMapping(f, t) =>
-        MappingLookup.download(new DownloadMappingLookup(f.bucket, f.key, t.toString))
+        MappingLookup.download(new DownloadMappingLookup(f.bucket, f.key, t.path.path))
     }).asJava)
 
   def isEmpty: Boolean =
@@ -41,10 +40,10 @@ object Mappings {
     Mappings(m.mappings.asScala.toVector.map(m =>
       if (m.isSetUpload) {
         val up = m.getUpload
-        UploadMapping(new Path(up.path), S3Address(up.bucket, up.key))
+        UploadMapping(HdfsPath.fromString(up.path), S3Address(up.bucket, up.key))
       } else {
         val d = m.getDownload
-        DownloadMapping(S3Address(d.bucket, d.key), new Path(d.path))
+        DownloadMapping(S3Address(d.bucket, d.key), HdfsPath.fromString(d.path))
       }
     ))
 }

@@ -1,10 +1,10 @@
 package com.ambiata.notion.distcopy
 
-import com.ambiata.disorder._
+import com.ambiata.mundane.path._
+import com.ambiata.mundane.path.Arbitraries._
+import com.ambiata.poacher.hdfs._
 import com.ambiata.saws.testing.Arbitraries._
 import com.ambiata.saws.s3._
-
-import org.apache.hadoop.fs.Path
 
 import org.scalacheck._, Arbitrary._
 import org.specs2._
@@ -32,8 +32,7 @@ class MappingsSpec extends Specification with ScalaCheck { def is = s2"""
 
   implicit def MappingArbitrary: Arbitrary[Mapping] = Arbitrary(for {
     s <- arbitrary[S3Address]
-    q <- arbitrary[NonEmptyString]
-    p = new Path(q.value.replace(':', ' '))
+    p <- arbitrary[Path].map(HdfsPath.apply)
     m <- Gen.oneOf(Gen.const(UploadMapping(p, s)), Gen.const(DownloadMapping(s, p)))
   } yield m)
 
