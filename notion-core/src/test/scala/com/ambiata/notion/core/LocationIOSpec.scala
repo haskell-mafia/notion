@@ -77,7 +77,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write lines from a location
 
-    From a sinlge file/object using readLines
+    From a single file/object using readLines
 
      ${ prop((loc: LocationTemporary, lines: List[N]) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -86,7 +86,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
         } yield r) must beOkValue(loc.context)(lines.map(_.value)))
       }
 
-    From a sinlge file/object using readLinesAll
+    From a single file/object using readLinesAll
 
      ${ prop((loc: LocationTemporary, lines: List[N]) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -133,7 +133,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write strings from a location
 
-    From a sinlge file/object using readUtf8
+    From a single file/object using readUtf8
 
      ${ prop((loc: LocationTemporary, str: S) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -142,7 +142,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
         } yield r) must beOkValue(loc.context)(str.value))
       }
 
-    From a sinlge file/object using readUtf8All
+    From a single file/object using readUtf8All
 
      ${ prop((loc: LocationTemporary, str: S) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -189,7 +189,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write bytes from a location
 
-    From a sinlge file/object
+    From a single file/object
 
      ${ prop((loc: LocationTemporary, value: S) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -226,7 +226,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write using input/output streams
 
-    From a sinlge file/object
+    From a single file/object
 
      ${ prop { (loc: LocationTemporary, text: S) =>
           var read: String = null
