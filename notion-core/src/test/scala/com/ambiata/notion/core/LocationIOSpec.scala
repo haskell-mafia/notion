@@ -102,7 +102,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
           _ <- LocationIO.writeUtf8Lines(p | Component("1"), l1.map(_.value))
           _ <- LocationIO.writeUtf8Lines(p | Component("2"), l2.map(_.value))
           r <- LocationIO.readLinesAll(p)
-        } yield r) must beOkValue(loc.context)((l1 ++ l2).map(_.value)))
+        } yield r.sorted) must beOkValue(loc.context)((l1 ++ l2).map(_.value).sorted))
       }
 
     Fails when reading from a location which is not a file/object when using readLines
@@ -158,7 +158,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
           _ <- LocationIO.writeUtf8(p | Component("1"), str1.value)
           _ <- LocationIO.writeUtf8(p | Component("2"), str2.value)
           r <- LocationIO.readUtf8All(p)
-        } yield r) must beOkValue(loc.context)(str1.value + str2.value))
+        } yield r.sorted) must beOkValue(loc.context)((str1.value + str2.value).sorted))
       }
 
     Fails when reading from a location which is not a file/object when using readUtf8
