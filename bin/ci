@@ -1,4 +1,4 @@
-#/bin/sh
+#!/bin/sh
 
 JVM_OPTS="-Dfile.encoding=UTF8 -XX:MaxPermSize=512m -Xms512m -Xmx2g -XX:+CMSClassUnloadingEnabled -XX:+UseConcMarkSweepGC"; export JVM_OPTS
 HADOOP_VERSION=yarn; export HADOOP_VERSION
