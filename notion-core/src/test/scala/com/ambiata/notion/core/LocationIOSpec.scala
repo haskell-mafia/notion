@@ -77,7 +77,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write lines from a location
 
-    From a sinlge file/object
+    From a single file/object using readLines
 
      ${ prop((loc: LocationTemporary, lines: List[N]) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -86,7 +86,26 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
         } yield r) must beOkValue(loc.context)(lines.map(_.value)))
       }
 
-    Fails when reading from a location which is not a file/object
+    From a single file/object using readLinesAll
+
+     ${ prop((loc: LocationTemporary, lines: List[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p, lines.map(_.value))
+          r <- LocationIO.readLinesAll(p)
+        } yield r) must beOkValue(loc.context)(lines.map(_.value)))
+      }
+
+    From a dir/prefix using readLinesAll
+
+     ${ prop((loc: LocationTemporary, l1: List[N], l2: List[N]) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8Lines(p | Component("1"), l1.map(_.value))
+          _ <- LocationIO.writeUtf8Lines(p | Component("2"), l2.map(_.value))
+          r <- LocationIO.readLinesAll(p)
+        } yield r.sorted) must beOkValue(loc.context)((l1 ++ l2).map(_.value).sorted))
+      }
+
+    Fails when reading from a location which is not a file/object when using readLines
    
      ${ prop((loc: LocationTemporary, c: Component, lines: List[N]) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -114,7 +133,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write strings from a location
 
-    From a sinlge file/object
+    From a single file/object using readUtf8
 
      ${ prop((loc: LocationTemporary, str: S) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -123,7 +142,26 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
         } yield r) must beOkValue(loc.context)(str.value))
       }
 
-    Fails when reading from a location which is not a file/object
+    From a single file/object using readUtf8All
+
+     ${ prop((loc: LocationTemporary, str: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p, str.value)
+          r <- LocationIO.readUtf8All(p)
+        } yield r) must beOkValue(loc.context)(str.value))
+      }
+
+    From a dir/prefix using readUtf8All
+
+     ${ prop((loc: LocationTemporary, str1: S, str2: S) => (for {
+          p <- LocationIO.fromRIO(loc.location)
+          _ <- LocationIO.writeUtf8(p | Component("1"), str1.value)
+          _ <- LocationIO.writeUtf8(p | Component("2"), str2.value)
+          r <- LocationIO.readUtf8All(p)
+        } yield r.sorted) must beOkValue(loc.context)((str1.value + str2.value).sorted))
+      }
+
+    Fails when reading from a location which is not a file/object when using readUtf8
    
      ${ prop((loc: LocationTemporary, c: Component, str: S) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -151,7 +189,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write bytes from a location
 
-    From a sinlge file/object
+    From a single file/object
 
      ${ prop((loc: LocationTemporary, value: S) => (for {
           p <- LocationIO.fromRIO(loc.location)
@@ -188,7 +226,7 @@ class LocationIOSpec extends Specification with ScalaCheck { def is = s2"""
 
   LocationIO should be able to read/write using input/output streams
 
-    From a sinlge file/object
+    From a single file/object
 
      ${ prop { (loc: LocationTemporary, text: S) =>
           var read: String = null
