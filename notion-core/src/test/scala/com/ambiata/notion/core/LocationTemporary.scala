@@ -42,6 +42,16 @@ case class LocationTemporary(t: T, seed: String, client: AmazonS3Client, conf: C
 
   def localLocation: RIO[Location] =
     LocalTemporary(Temporary.uniqueLocalPath, seed).path.map(LocalLocation.apply)
+
+  def locationContext: RIO[LocationContext] =
+    location.map(_ match {
+    case LocalLocation(p) =>
+      LocalLocationContext(p)
+    case S3Location(p) =>
+      S3LocationContext(client, p)
+    case HdfsLocation(p) =>
+      HdfsLocationContext(conf, p)
+  })
 }
 
 object LocationTemporary {
