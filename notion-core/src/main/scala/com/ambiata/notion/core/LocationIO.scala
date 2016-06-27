@@ -106,9 +106,15 @@ object LocationIO {
       case S3LocationContext(client, p) => fromS3(client, p.getLines)
     }
 
+  def readLinesAll(location: Location): LocationIO[List[String]] =
+    list(location).flatMap(_.traverse(readLines)).map(_.flatten)
+
   /** @return the content of the file present at `location` as a UTF-8 string if there is one */
   def readUtf8(location: Location): LocationIO[String] =
     readBytes(location).map(new String(_, "UTF-8"))
+
+  def readUtf8All(location: Location): LocationIO[String] =
+    list(location).flatMap(_.traverse(readUtf8)).map(_.mkString)
 
   /** @return the content of the file present at `location` as an array of bytes if there is one */
   def readBytes(location: Location): LocationIO[Array[Byte]] =
