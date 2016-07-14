@@ -27,6 +27,7 @@ object DistCopyJob {
   val ReadLimit = "distcopy.read.limit"
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
+  val CrossValidate = "distcopy.cross.validate"
 
   // additional counters for reading
   // values on the hadoop console interactively
@@ -50,6 +51,7 @@ object DistCopyJob {
         job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
         job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
         job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
+        job.getConfiguration.setBoolean(CrossValidate, conf.parameters.crossValidate)
       })
       n   = Math.min(mappings.mappings.length, conf.mappersNumber)
       _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, n)
@@ -89,11 +91,14 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   var readLimit: Int = 0
   var multipartUploadThreshold: Long = 0
   var retryCount: Int = 0
+  var crossValidate: Boolean = true
 
   override def setup(context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
     // get the default mapper parameter values
     val parameters = DistCopyMapperParameters.Default
 
+    crossValidate =
+      context.getConfiguration.getBoolean(CrossValidate, true)
     partSize =
       context.getConfiguration.getLong(PartSize, parameters.partSize.toBytes.value)
     readLimit =
@@ -127,12 +132,13 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       println(Result.asString(e))
       retryCounter.increment(1)
       context.progress()
+      Thread.sleep(200 * (math.pow(2, retryCount - n)))
       ()
     })
 
     val action: S3Action[Unit] = value match {
       case DownloadMapping(from, destination) => for {
-        _               <- validateDownload(destination, client, context.getConfiguration)
+        _               <- if (crossValidate) validateDownload(destination, client, context.getConfiguration) else ().pure[S3Action]
         _               = println(s"Downloading: ${from.render} ===> $destination")
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
@@ -152,7 +158,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       } yield ()
 
       case UploadMapping(from, destination)   => for {
-        _        <- validateUpload(destination, client, context.getConfiguration)
+        _        <- if (crossValidate) validateUpload(destination, client, context.getConfiguration) else ().pure[S3Action]
         fs       = FileSystem.get(context.getConfiguration)
         length   <- S3Action.safe[Long]({
           fs.getFileStatus(from.toHPath).getLen
