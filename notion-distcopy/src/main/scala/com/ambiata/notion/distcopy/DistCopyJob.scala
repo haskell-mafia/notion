@@ -28,6 +28,7 @@ object DistCopyJob {
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
   val CrossValidate = "distcopy.cross.validate"
+  val S3Endpoint = "distcopy.s3.endpoint"
 
   // additional counters for reading
   // values on the hadoop console interactively
@@ -52,6 +53,7 @@ object DistCopyJob {
         job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
         job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
         job.getConfiguration.setBoolean(CrossValidate, conf.parameters.crossValidate)
+        job.getConfiguration.setBoolean(S3Endpoint, conf.client.getEndpoint)
       })
       n   = Math.min(mappings.mappings.length, conf.mappersNumber)
       _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, n)
@@ -77,7 +79,7 @@ object DistCopyJob {
  */
 class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWritable] {
   private var transferManager: TransferManager = null
-  val client = Clients.s3
+  var client: AmazonS3Client = null
   var totalBytesUploaded: Counter = null
   var totalMegaBytesUploaded: Counter = null
   var totalGigaBytesUploaded: Counter = null
@@ -97,6 +99,11 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
     // get the default mapper parameter values
     val parameters = DistCopyMapperParameters.Default
 
+    // default to sydney for historical reasons.
+    val endpoint =
+      context.getConfiguration.getString(S3Endpoint, "s3-ap-southeast-2.amazonaws.com")
+    client =
+      Clients.configured(new AmazonS3Client(), endpoint)
     crossValidate =
       context.getConfiguration.getBoolean(CrossValidate, true)
     partSize =
