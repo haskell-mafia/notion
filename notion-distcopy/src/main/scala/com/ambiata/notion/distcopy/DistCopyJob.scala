@@ -132,7 +132,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       println(Result.asString(e))
       retryCounter.increment(1)
       context.progress()
-      Thread.sleep(200 * (math.pow(2, retryCount - n)))
+      Thread.sleep(200 * (math.pow(2, retryCount - n).toInt))
       ()
     })
 
