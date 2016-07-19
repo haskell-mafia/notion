@@ -101,7 +101,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
 
     // default to sydney for historical reasons.
     val endpoint =
-      context.getConfiguration.getString(S3Endpoint, "s3-ap-southeast-2.amazonaws.com")
+      context.getConfiguration.get(S3Endpoint, "s3-ap-southeast-2.amazonaws.com")
     client =
       Clients.configured(new AmazonS3Client(), endpoint)
     crossValidate =
