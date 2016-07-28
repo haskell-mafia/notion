@@ -53,7 +53,8 @@ object DistCopyJob {
         job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
         job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
         job.getConfiguration.setBoolean(CrossValidate, conf.parameters.crossValidate)
-        job.getConfiguration.setBoolean(S3Endpoint, conf.client.getEndpoint)
+        // Is there another way to get the endpoint?
+        job.getConfiguration.set(S3Endpoint, conf.client.getRegion.toAWSRegion.getServiceEndpoint("s3"))
       })
       n   = Math.min(mappings.mappings.length, conf.mappersNumber)
       _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, n)
