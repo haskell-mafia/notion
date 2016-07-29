@@ -50,6 +50,7 @@ object DistCopyJob {
         job.getConfiguration.setInt("mapreduce.map.maxattempts", 1)
         job.setNumReduceTasks(0)
         job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
+        job.getConfiguration.setInt(RetryCount, conf.retryCount)
         job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
         job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
         job.getConfiguration.setBoolean(CrossValidate, conf.parameters.crossValidate)
