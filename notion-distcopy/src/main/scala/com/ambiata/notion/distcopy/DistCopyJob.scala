@@ -47,7 +47,7 @@ object DistCopyJob {
         job.setJobName(ctx.id.value)
         job.setInputFormatClass(classOf[DistCopyInputFormat])
         job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
-        job.getConfiguration.setInt("mapreduce.map.maxattempts", 1)
+        job.getConfiguration.setInt("mapreduce.map.maxattempts", if(conf.parameters.crossValidate) 1 else 3)
         job.setNumReduceTasks(0)
         job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
         job.getConfiguration.setInt(RetryCount, conf.retryCount)
