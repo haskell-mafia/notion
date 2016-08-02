@@ -27,6 +27,8 @@ object DistCopyJob {
   val ReadLimit = "distcopy.read.limit"
   val MultipartUploadThreshold = "distcopy.multipart.upload.threshold"
   val RetryCount = "distcopy.retry.count"
+  val CrossValidate = "distcopy.cross.validate"
+  val S3Endpoint = "distcopy.s3.endpoint"
 
   // additional counters for reading
   // values on the hadoop console interactively
@@ -45,11 +47,15 @@ object DistCopyJob {
         job.setJobName(ctx.id.value)
         job.setInputFormatClass(classOf[DistCopyInputFormat])
         job.getConfiguration.setBoolean("mapreduce.map.speculative", false)
-        job.getConfiguration.setInt("mapreduce.map.maxattempts", 1)
+        job.getConfiguration.setInt("mapreduce.map.maxattempts", if(conf.parameters.crossValidate) 1 else 3)
         job.setNumReduceTasks(0)
         job.getConfiguration.setLong(PartSize, conf.partSize.toBytes.value)
+        job.getConfiguration.setInt(RetryCount, conf.retryCount)
         job.getConfiguration.setInt(ReadLimit, conf.readLimit.toBytes.value.toInt)
         job.getConfiguration.setLong(MultipartUploadThreshold, conf.multipartUploadThreshold.toBytes.value)
+        job.getConfiguration.setBoolean(CrossValidate, conf.parameters.crossValidate)
+        // Is there another way to get the endpoint?
+        job.getConfiguration.set(S3Endpoint, conf.client.getRegion.toAWSRegion.getServiceEndpoint("s3"))
       })
       n   = Math.min(mappings.mappings.length, conf.mappersNumber)
       _   <- DistCopyInputFormat.setMappings(job, ctx, conf.client, mappings, n)
@@ -75,7 +81,7 @@ object DistCopyJob {
  */
 class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWritable] {
   private var transferManager: TransferManager = null
-  val client = Clients.s3
+  var client: AmazonS3Client = null
   var totalBytesUploaded: Counter = null
   var totalMegaBytesUploaded: Counter = null
   var totalGigaBytesUploaded: Counter = null
@@ -89,11 +95,19 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
   var readLimit: Int = 0
   var multipartUploadThreshold: Long = 0
   var retryCount: Int = 0
+  var crossValidate: Boolean = true
 
   override def setup(context: Mapper[NullWritable, Mapping, NullWritable, NullWritable]#Context): Unit = {
     // get the default mapper parameter values
     val parameters = DistCopyMapperParameters.Default
 
+    // default to sydney for historical reasons.
+    val endpoint =
+      context.getConfiguration.get(S3Endpoint, "s3-ap-southeast-2.amazonaws.com")
+    client =
+      Clients.configured(new AmazonS3Client(), endpoint)
+    crossValidate =
+      context.getConfiguration.getBoolean(CrossValidate, true)
     partSize =
       context.getConfiguration.getLong(PartSize, parameters.partSize.toBytes.value)
     readLimit =
@@ -127,12 +141,13 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       println(Result.asString(e))
       retryCounter.increment(1)
       context.progress()
+      Thread.sleep(200 * (math.pow(2, retryCount - n).toInt))
       ()
     })
 
     val action: S3Action[Unit] = value match {
       case DownloadMapping(from, destination) => for {
-        _               <- validateDownload(destination, client, context.getConfiguration)
+        _               <- if (crossValidate) validateDownload(destination, client, context.getConfiguration) else ().pure[S3Action]
         _               = println(s"Downloading: ${from.render} ===> $destination")
         tmpOutput       = FileOutputFormat.getWorkOutputPath(context)
         tmpDestination  = new Path(tmpOutput.toString + "/" + UUID.randomUUID())
@@ -152,7 +167,7 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
       } yield ()
 
       case UploadMapping(from, destination)   => for {
-        _        <- validateUpload(destination, client, context.getConfiguration)
+        _        <- if (crossValidate) validateUpload(destination, client, context.getConfiguration) else ().pure[S3Action]
         fs       = FileSystem.get(context.getConfiguration)
         length   <- S3Action.safe[Long]({
           fs.getFileStatus(from.toHPath).getLen

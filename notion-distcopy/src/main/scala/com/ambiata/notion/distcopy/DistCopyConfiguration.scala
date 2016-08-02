@@ -36,8 +36,11 @@ object DistCopyConfiguration {
  *
  *  - a number of mappers: this depends on the number and size of files being transferred
  *  - mappers parameters governing the transfer of each file between S3 and Hdfs
+ *  - crossValidate whether or not to perform cross-validate checks for overwriting files,
+ *    this defaults to true because it is safer to check, but it does have a significant
+ *    performance and reliability cost. It can be disabled with adequate pre-checks.
  */
-case class DistCopyParameters(mappersNumber: Int, mapperParameters: DistCopyMapperParameters) {
+case class DistCopyParameters(mappersNumber: Int, mapperParameters: DistCopyMapperParameters, crossValidate: Boolean) {
   def retryCount: Int = mapperParameters.retryCount
   def partSize: BytesQuantity = mapperParameters.partSize
   def readLimit: BytesQuantity = mapperParameters.readLimit
@@ -48,6 +51,7 @@ object DistCopyParameters {
   def createDefault(mappersNumber: Int) = DistCopyParameters(
       mappersNumber
     , DistCopyMapperParameters.Default
+    , true
   )
 }
 
@@ -57,7 +61,7 @@ object DistCopyParameters {
  * For transferring files of various sizes
  *  experimentation suggests values of
  *
- *    retryCount = 3
+ *    retryCount = 10
  *    partSize = 100.mb
  *    readLimit = 100.mb
  *    multipartUploadThreshold = 100.mb
@@ -71,10 +75,9 @@ case class DistCopyMapperParameters(
 
 object DistCopyMapperParameters {
   val Default = DistCopyMapperParameters(
-      3
+      10
     , 100.mb
     , 100.mb
     , 100.mb
   )
 }
-
