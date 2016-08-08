@@ -7,6 +7,7 @@ import com.ambiata.com.amazonaws.services.s3.AmazonS3Client
 import com.ambiata.com.amazonaws.services.s3.transfer.{TransferManagerConfiguration, TransferManager}
 import com.ambiata.mundane.control._
 import com.ambiata.mundane.io._
+import com.ambiata.mundane.path._
 import com.ambiata.poacher.hdfs.HdfsPath
 import com.ambiata.poacher.mr._
 import com.ambiata.saws.core._
@@ -162,7 +163,11 @@ class DistCopyMapper extends Mapper[NullWritable, Mapping, NullWritable, NullWri
           )
         }.retry(retryCount, retryHandler)
         _               = println(s"Moving: $tmpDestination ===> $destination")
-        _               <- S3Action.fromRIO((destination.dirname.mkdirs >> HdfsPath.fromPath(tmpDestination).move(destination)).run(context.getConfiguration))
+        _               <- S3Action.fromRIO((for {
+          _ <- destination.dirname.mkdirs
+          f <- HdfsPath.fromPath(tmpDestination).determineFile
+          _ <- f.moveWithMode(destination, TargetMode.Overwrite)
+        } yield ()).run(context.getConfiguration))
         _               = totalFilesDownloaded.increment(1)
       } yield ()
 
